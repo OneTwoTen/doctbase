@@ -67,6 +67,12 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
 
+    const preflight_mod = b.addModule("preflight", .{
+        .root_source_file = b.path("apps/cli/src/install/preflight.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
     const gateway = b.addExecutable(.{
         .name = "doctbase-gateway",
         .root_module = b.createModule(.{
@@ -191,7 +197,22 @@ pub fn build(b: *std.Build) !void {
     const run_step = b.step("run-gateway", "Run the gateway service");
     run_step.dependOn(&run_gateway.step);
 
+    const fmt_command = b.addSystemCommand(&.{ "zig", "fmt", "--check", "build.zig", "apps", "packages", "tests", "tools" });
+    const fmt_step = b.step("fmt", "Check Zig source formatting");
+    fmt_step.dependOn(&fmt_command.step);
+
     const test_step = b.step("test", "Run unit tests");
+
+    const preflight_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/unit/preflight_test.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{.{ .name = "preflight", .module = preflight_mod }},
+        }),
+    });
+    test_step.dependOn(&b.addRunArtifact(preflight_tests).step);
+
     inline for (.{ core_mod, config_mod, protocol_mod, runtime_mod, lifecycle_mod, postgres_mod, telemetry_mod, http_mod, security_mod }) |module| {
         const tests = b.addTest(.{ .root_module = module });
         const run_tests = b.addRunArtifact(tests);

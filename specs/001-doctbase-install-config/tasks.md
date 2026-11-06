@@ -31,15 +31,15 @@ Monorepo theo [plan.md](./plan.md): `apps/`, `packages/`, `dashboard/`, `infrast
 - [x] T001 Create monorepo tree and root build files in `build.zig`, `build.zig.zon`, `.zigversion`, `README.md`
 - [x] T002 Pin Zig 0.17.1 and dependencies (httpz; TOML subset in `packages/config`; `pg.zig` để sau) in `build.zig.zon` and `build.zig`
 - [x] T003 [P] Configure CI (format, build, unit, integration) in `.github/workflows/ci.yml` — E2E install matrix theo dõi ở T136
-- [ ] T004 [P] Scaffold SvelteKit dashboard in `dashboard/package.json`, `dashboard/svelte.config.js`, `dashboard/src/routes/+layout.svelte`
-- [ ] T005 [P] Scaffold deploy artifacts in `deploy/native/install.sh`, `deploy/native/units/`, `deploy/native/polkit/`, `deploy/docker/compose.yml`
-- [ ] T006 [P] Scaffold docs in `docs/quickstart.md`, `docs/config-reference.md`, `docs/upgrade.md`, `docs/backup-restore.md`, `docs/troubleshooting.md`
-- [ ] T007 [P] Create test harness skeleton in `tests/unit/`, `tests/integration/harness.zig`, `tests/e2e/run-install.sh`, `tests/security/`, `tests/restore/`
-- [ ] T008 [P] Configure formatting/lint/editor settings in `.editorconfig`, `build.zig` (`fmt`, `test` steps)
-- [ ] T009 [P] Create release tooling skeleton in `tools/release.zig`, `tools/manifest.zig`
-- [ ] T010 [P] Create local dev infrastructure in `deploy/dev/compose.yml` for PostgreSQL, PgBouncer, Caddy
+- [x] T004 [P] Scaffold SvelteKit dashboard in `dashboard/package.json`, `dashboard/svelte.config.js`, `dashboard/src/routes/+layout.svelte`
+- [x] T005 [P] Scaffold deploy artifacts in `deploy/native/install.sh`, `deploy/native/units/`, `deploy/native/polkit/`, `deploy/docker/compose.yml`
+- [x] T006 [P] Scaffold docs in `docs/quickstart.md`, `docs/config-reference.md`, `docs/upgrade.md`, `docs/backup-restore.md`, `docs/troubleshooting.md`
+- [x] T007 [P] Create test harness skeleton in `tests/unit/`, `tests/integration/harness.zig`, `tests/e2e/run-install.sh`, `tests/security/`, `tests/restore/`
+- [x] T008 [P] Configure formatting/lint/editor settings in `.editorconfig`, `build.zig` (`fmt`, `test` steps)
+- [x] T009 [P] Create release tooling skeleton in `tools/release.zig`, `tools/manifest.zig`
+- [x] T010 [P] Create local dev infrastructure in `deploy/dev/compose.yml` for PostgreSQL, PgBouncer, Caddy
 
-**Slice 1 status (2026-11-06)**: T001, T002, T012, T025, T154, T158 đã xong. Gateway chạy UDS với `/healthz`, `/readyz`, `/metrics`, `/internal/v1/info`; graceful shutdown đã test. Service Manager (`packages/service-lifecycle`) và `doctbase dev` là slice tiếp theo.
+**Historical status note**: The initial Slice 1 update predates the completed Phase 2B work and the Coolify feature. Current progress is tracked by the task checkboxes and the feature-specific documents below.
 
 ---
 
@@ -110,14 +110,14 @@ Monorepo theo [plan.md](./plan.md): `apps/`, `packages/`, `dashboard/`, `infrast
 
 ### Tests for User Story 1
 
-- [ ] T036 [P] [US1] Unit test preflight (OS, RAM, disk, ports, DNS, existing services) in `tests/unit/preflight_test.zig`
+- [x] T036 [P] [US1] Unit test preflight (OS, RAM, disk, ports, DNS, existing services) in `tests/unit/preflight_test.zig`
 - [ ] T037 [P] [US1] Integration test install idempotency (3 lần chạy) in `tests/integration/install_idempotency_test.zig`
 - [ ] T038 [P] [US1] E2E test fresh Ubuntu install in `tests/e2e/install-ubuntu.sh`
 - [ ] T039 [P] [US1] Security test no default secrets, no public DB/admin ports in `tests/security/install_defaults_test.zig`
 
 ### Implementation for User Story 1
 
-- [ ] T040 [US1] Implement preflight checks in `apps/cli/src/install/preflight.zig`
+- [x] T040 [US1] Implement read-only Linux host collection and preflight evaluation (OS, RAM, data disk, TCP listeners, optional DNS) in `apps/cli/src/install/preflight.zig`
 - [ ] T041 [US1] Implement package installation (PGDG PostgreSQL 18, PgBouncer, Caddy, optional libvips) in `apps/cli/src/install/packages.zig`
 - [ ] T042 [US1] Create system users/groups/directories/tmpfiles with documented modes in `apps/cli/src/install/users.zig`, `deploy/native/tmpfiles/doctbase.conf`
 - [ ] T043 [US1] Implement secret generation and file permissions in `apps/cli/src/install/secrets.zig`
