@@ -13,8 +13,7 @@ pub fn forceRlsSql(allocator: std.mem.Allocator, table_name: []const u8) ![]u8 {
 /// Generate SQL statement for project-tenant isolation policy.
 /// Enforces current_setting('request.project_id', true) = project_id.
 pub fn projectTenantPolicySql(allocator: std.mem.Allocator, table_name: []const u8, project_col: []const u8) ![]u8 {
-    return std.fmt.allocPrint(
-        allocator,
+    return std.fmt.allocPrint(allocator,
         \\CREATE POLICY "{s}_tenant_isolation" ON "{s}"
         \\  AS RESTRICTIVE
         \\  USING ("{s}" = NULLIF(current_setting('request.project_id', true), ''))

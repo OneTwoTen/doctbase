@@ -1,0 +1,174 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    name: Build & test (ubuntu-24.04, x86_64)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache Zig
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/zig
+            .zig-cache
+          key: zig-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.zigversion', 'build.zig.zon') }}
+          restore-keys: |
+            zig-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Install Zig
+        run: |
+          set -euo pipefail
+          version="$(tr -d '[:space:]' < .zigversion)"
+          arch="$(uname -m)"
+          tarball="zig-${arch}-linux-${version}.tar.xz"
+          url="https://ziglang.org/download/${version}/${tarball}"
+          echo "Installing Zig ${version} for ${arch}"
+          curl -fsSL "$url" -o "/tmp/${tarball}"
+          expected="$(curl -fsSL https://ziglang.org/download/index.json \
+            | jq -r --arg v "$version" --arg a "${arch}-linux" '.[$v][$a].shasum')"
+          echo "${expected}  /tmp/${tarball}" | sha256sum --check --status
+          sudo tar -xJf "/tmp/${tarball}" -C /opt
+          sudo ln -sf "/opt/zig-${arch}-linux-${version}/zig" /usr/local/bin/zig
+          zig version
+
+      - name: Check formatting
+        run: zig fmt --check build.zig apps packages tests
+
+      - name: Build
+        run: zig build --summary all
+
+      - name: Test
+        run: zig build test --summary all
+
+      - name: Cross-build (aarch64-linux)
+        run: zig build -Dtarget=aarch64-linux-gnu --summary all
+
+  docker-toolchain:
+    name: Docker toolchain (build & test)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build toolchain image
+        run: docker compose -f deploy/dev/compose.yml build
+
+      - name: Build and test in container
+        run: |
+          set -euo pipefail
+          docker compose -f deploy/dev/compose.yml run --rm \
+            --user "$(id -u):$(id -g)" \
+            toolchain zig build test --summary all
+
+  compose-resource:
+    name: Coolify compose resource
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      SERVICE_PASSWORD_64_INTERNALTOKEN: ci-internal-token
+      SERVICE_PASSWORD_64_POSTGRES: ci-postgres-password
+      DOCTBASE_VERSION: ci
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate compose profiles
+        run: |
+          set -euo pipefail
+          compose="docker compose -f deploy/docker/compose.yml"
+          $compose config -q
+          $compose --profile bundled config -q
+          $compose --profile optional config -q
+
+      - name: Build gateway and management images
+        run: docker compose -f deploy/docker/compose.yml build gateway management
+
+      - name: Start services and wait for health
+        run: |
+          set -euo pipefail
+          compose="docker compose -f deploy/docker/compose.yml"
+          $compose up -d gateway management
+          for attempt in $(seq 1 60); do
+            if $compose exec -T gateway /usr/local/bin/healthcheck.sh \
+              && $compose exec -T management /usr/local/bin/healthcheck.sh; then
+              echo "gateway and management are healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "services did not become healthy in time" >&2
+          $compose ps >&2
+          $compose logs >&2
+          exit 1
+
+      - name: Check readiness and internal auth over TCP
+        run: |
+          set -euo pipefail
+          compose="docker compose -f deploy/docker/compose.yml"
+          $compose exec -T gateway curl -fsS http://127.0.0.1:8080/readyz
+          $compose exec -T management curl -fsS http://127.0.0.1:8081/readyz
+          if $compose exec -T gateway curl -fsS http://127.0.0.1:8080/internal/v1/info; then
+            echo "internal endpoint accepted a request without a token" >&2
+            exit 1
+          fi
+
+      - name: Assert no published ports
+        run: |
+          set -euo pipefail
+          docker compose -f deploy/docker/compose.yml config --format json \
+            | jq -e '[.services[] | (.ports // []) | length] | add == 0'
+
+      - name: Redeploy is idempotent
+        run: |
+          set -euo pipefail
+          compose="docker compose -f deploy/docker/compose.yml"
+          $compose up -d gateway management
+          for attempt in $(seq 1 30); do
+            if $compose exec -T gateway /usr/local/bin/healthcheck.sh \
+              && $compose exec -T management /usr/local/bin/healthcheck.sh; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "services did not recover after redeploy" >&2
+          exit 1
+
+      - name: Optional profile does not disrupt core services
+        run: |
+          set -euo pipefail
+          compose="docker compose -f deploy/docker/compose.yml"
+          $compose --profile optional up -d auth
+          for attempt in $(seq 1 30); do
+            if $compose exec -T auth /usr/local/bin/healthcheck.sh; then
+              break
+            fi
+            sleep 2
+            if [ "$attempt" = "30" ]; then
+              echo "auth did not become healthy" >&2
+              exit 1
+            fi
+          done
+          $compose exec -T gateway /usr/local/bin/healthcheck.sh
+          $compose exec -T management /usr/local/bin/healthcheck.sh
+
+      - name: Tear down
+        if: always()
+        run: docker compose -f deploy/docker/compose.yml --profile optional down -v

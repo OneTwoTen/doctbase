@@ -23,11 +23,11 @@ pub const MigrationRunner = struct {
 
     pub fn migrationsTableSql() []const u8 {
         return
-            \\CREATE TABLE IF NOT EXISTS _doctbase_migrations (
-            \\  version INTEGER PRIMARY KEY,
-            \\  name VARCHAR(255) NOT NULL,
-            \\  applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-            \\);
+        \\CREATE TABLE IF NOT EXISTS _doctbase_migrations (
+        \\  version INTEGER PRIMARY KEY,
+        \\  name VARCHAR(255) NOT NULL,
+        \\  applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        \\);
         ;
     }
 

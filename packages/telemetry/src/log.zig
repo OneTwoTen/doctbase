@@ -44,7 +44,7 @@ pub const Logger = struct {
         request_id: ?[]const u8,
         timestamp_ms: i64,
     ) ![]u8 {
-        if (@intFromEnum(level) < @intFromEnum(self.level)) {
+        if (@backingInt(level) < @backingInt(self.level)) {
             return &.{};
         }
 

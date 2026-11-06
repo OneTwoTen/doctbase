@@ -12,11 +12,15 @@ Tài liệu cho Doctbase V1, được tổ chức theo **Spec Kit**. Các artifa
 - [Feature 001 — Data model](../specs/001-doctbase-install-config/data-model.md) — entity, quan hệ, state transition.
 - [Feature 001 — Contracts](../specs/001-doctbase-install-config/contracts/) — CLI, config, Management API, service protocol.
 - [Feature 001 — Quickstart](../specs/001-doctbase-install-config/quickstart.md) — kịch bản validate end-to-end.
+- [Feature 002 — Spec](../specs/002-coolify-resource/spec.md) · [Plan](../specs/002-coolify-resource/plan.md) · [Tasks](../specs/002-coolify-resource/tasks.md) — triển khai như một Coolify resource.
+- [Amendment 1.1.0](../.specify/memory/amendments/2026-11-06-external-proxy-coolify.md) — external managed proxy và config surface trong Docker mode.
 
 ## Tài liệu nghiên cứu tham chiếu
 
 - [Nghiên cứu cài đặt & cấu hình dễ dàng](nghien-cuu-cai-dat-cau-hinh.md) — phân tích Supabase/Appwrite/PocketBase/Coolify/Dokploy, luồng cài native, mẫu cấu hình, backup/upgrade, test matrix, nguồn tham khảo.
 - [Core Runtime + Service Manager](runtime-service-manager.md) — trạng thái implementation, cách chạy gateway, endpoint và các slice tiếp theo.
+- [Phát triển, build và test](development.md) — build native, Docker toolchain (`deploy/dev`) và GitHub Actions CI.
+- [Triển khai trên Coolify](coolify.md) — resource Docker Compose, domain/TLS qua proxy nền tảng, database profile, rollback.
 
 ## Quy ước
 

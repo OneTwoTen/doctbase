@@ -14,7 +14,7 @@ pub const BootstrapTracker = struct {
     current_stage: Stage = .init,
 
     pub fn advance(self: *BootstrapTracker, next_stage: Stage) bool {
-        if (@intFromEnum(next_stage) > @intFromEnum(self.current_stage)) {
+        if (@backingInt(next_stage) > @backingInt(self.current_stage)) {
             self.current_stage = next_stage;
             return true;
         }

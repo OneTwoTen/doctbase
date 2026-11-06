@@ -30,7 +30,7 @@ Monorepo theo [plan.md](./plan.md): `apps/`, `packages/`, `dashboard/`, `infrast
 
 - [x] T001 Create monorepo tree and root build files in `build.zig`, `build.zig.zon`, `.zigversion`, `README.md`
 - [x] T002 Pin Zig 0.17.1 and dependencies (httpz; TOML subset in `packages/config`; `pg.zig` để sau) in `build.zig.zon` and `build.zig`
-- [ ] T003 [P] Configure CI (format, unit, integration, E2E) in `.github/workflows/ci.yml`
+- [x] T003 [P] Configure CI (format, build, unit, integration) in `.github/workflows/ci.yml` — E2E install matrix theo dõi ở T136
 - [ ] T004 [P] Scaffold SvelteKit dashboard in `dashboard/package.json`, `dashboard/svelte.config.js`, `dashboard/src/routes/+layout.svelte`
 - [ ] T005 [P] Scaffold deploy artifacts in `deploy/native/install.sh`, `deploy/native/units/`, `deploy/native/polkit/`, `deploy/docker/compose.yml`
 - [ ] T006 [P] Scaffold docs in `docs/quickstart.md`, `docs/config-reference.md`, `docs/upgrade.md`, `docs/backup-restore.md`, `docs/troubleshooting.md`

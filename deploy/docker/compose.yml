@@ -1,0 +1,177 @@
+name: doctbase
+
+# Doctbase as a single Coolify resource (Docker Compose build pack).
+#
+# Coolify steps:
+#   New Resource -> Docker Compose -> GitHub repository
+#   Base Directory: "/"
+#   Docker Compose Location: "deploy/docker/compose.yml"
+#   Then add a domain to service `gateway` (port 8080) and to `management`
+#   (port 8081).
+#
+# Coolify fills SERVICE_FQDN_* and SERVICE_PASSWORD_* on first deploy. Without
+# Coolify, copy .env.example to .env and set the same variables.
+#
+# No service publishes a port: the platform proxy (Coolify/Traefik) owns 80/443
+# and routes to the internal port. Native installs keep using Caddy.
+#
+# Environment variables are written per service on purpose: Coolify scans the
+# compose file for magic variables, so no YAML anchors hide them.
+
+services:
+  gateway:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+      args:
+        SERVICE: gateway
+    image: doctbase/gateway:${DOCTBASE_VERSION:-dev}
+    init: true
+    restart: unless-stopped
+    environment:
+      DOCTBASE_MODE: docker
+      DOCTBASE_CONFIG: /etc/doctbase/doctbase.toml
+      DOCTBASE_CONFIG_MANAGED: "1"
+      DOCTBASE_LISTEN: 0.0.0.0:8080
+      DOCTBASE_HTTP_PORT: "8080"
+      DOCTBASE_INSTANCE_NAME: ${DOCTBASE_INSTANCE_NAME:-doctbase}
+      DOCTBASE_DOMAIN: ${DOCTBASE_DOMAIN:-}
+      DOCTBASE_ADMIN_EMAIL: ${DOCTBASE_ADMIN_EMAIL:-}
+      DOCTBASE_PROXY_MODE: ${DOCTBASE_PROXY_MODE:-external}
+      DOCTBASE_DATABASE_MODE: ${DOCTBASE_DATABASE_MODE:-external}
+      DOCTBASE_LOG_LEVEL: ${DOCTBASE_LOG_LEVEL:-info}
+      DOCTBASE_INTERNAL_TOKEN: ${SERVICE_PASSWORD_64_INTERNALTOKEN:?internal token is required}
+      SERVICE_PASSWORD_64_INTERNALTOKEN: ""
+      SERVICE_FQDN_GATEWAY_8080: ""
+    expose:
+      - "8080"
+    volumes:
+      - doctbase-data:/var/lib/doctbase
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/healthcheck.sh"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  management:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+      args:
+        SERVICE: management
+    image: doctbase/management:${DOCTBASE_VERSION:-dev}
+    init: true
+    restart: unless-stopped
+    environment:
+      DOCTBASE_MODE: docker
+      DOCTBASE_CONFIG: /etc/doctbase/doctbase.toml
+      DOCTBASE_CONFIG_MANAGED: "1"
+      DOCTBASE_LISTEN: 0.0.0.0:8081
+      DOCTBASE_HTTP_PORT: "8081"
+      DOCTBASE_INSTANCE_NAME: ${DOCTBASE_INSTANCE_NAME:-doctbase}
+      DOCTBASE_DOMAIN: ${DOCTBASE_DOMAIN:-}
+      DOCTBASE_ADMIN_EMAIL: ${DOCTBASE_ADMIN_EMAIL:-}
+      DOCTBASE_PROXY_MODE: ${DOCTBASE_PROXY_MODE:-external}
+      DOCTBASE_DATABASE_MODE: ${DOCTBASE_DATABASE_MODE:-external}
+      DOCTBASE_LOG_LEVEL: ${DOCTBASE_LOG_LEVEL:-info}
+      DOCTBASE_INTERNAL_TOKEN: ${SERVICE_PASSWORD_64_INTERNALTOKEN:?internal token is required}
+      SERVICE_PASSWORD_64_INTERNALTOKEN: ""
+      SERVICE_FQDN_MANAGEMENT_8081: ""
+    expose:
+      - "8081"
+    volumes:
+      - doctbase-data:/var/lib/doctbase
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/healthcheck.sh"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # Optional service. Enable with COMPOSE_PROFILES=optional.
+  auth:
+    profiles: ["optional"]
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+      args:
+        SERVICE: auth
+    image: doctbase/auth:${DOCTBASE_VERSION:-dev}
+    init: true
+    restart: unless-stopped
+    environment:
+      DOCTBASE_MODE: docker
+      DOCTBASE_CONFIG: /etc/doctbase/doctbase.toml
+      DOCTBASE_CONFIG_MANAGED: "1"
+      DOCTBASE_LISTEN: 0.0.0.0:8082
+      DOCTBASE_HTTP_PORT: "8082"
+      DOCTBASE_INSTANCE_NAME: ${DOCTBASE_INSTANCE_NAME:-doctbase}
+      DOCTBASE_DOMAIN: ${DOCTBASE_DOMAIN:-}
+      DOCTBASE_PROXY_MODE: ${DOCTBASE_PROXY_MODE:-external}
+      DOCTBASE_DATABASE_MODE: ${DOCTBASE_DATABASE_MODE:-external}
+      DOCTBASE_LOG_LEVEL: ${DOCTBASE_LOG_LEVEL:-info}
+      DOCTBASE_INTERNAL_TOKEN: ${SERVICE_PASSWORD_64_INTERNALTOKEN:?internal token is required}
+      SERVICE_PASSWORD_64_INTERNALTOKEN: ""
+    expose:
+      - "8082"
+    volumes:
+      - doctbase-data:/var/lib/doctbase
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/healthcheck.sh"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # Bundled database. Enable with COMPOSE_PROFILES=bundled and set
+  # DOCTBASE_DATABASE_MODE=managed. Leave the profile off to use an external
+  # PostgreSQL (DOCTBASE_DATABASE_MODE=external).
+  postgres:
+    profiles: ["bundled"]
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-doctbase}
+      POSTGRES_USER: ${POSTGRES_USER:-doctbase}
+      POSTGRES_PASSWORD: ${SERVICE_PASSWORD_64_POSTGRES:?database password is required}
+      SERVICE_PASSWORD_64_POSTGRES: ""
+    expose:
+      - "5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  pgbouncer:
+    profiles: ["bundled"]
+    image: edoburu/pgbouncer:v1.24.1-p0
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: ${POSTGRES_USER:-doctbase}
+      DB_PASSWORD: ${SERVICE_PASSWORD_64_POSTGRES:?database password is required}
+      POOL_MODE: transaction
+      AUTH_TYPE: scram-sha-256
+      MAX_CLIENT_CONN: "1000"
+      DEFAULT_POOL_SIZE: "10"
+    expose:
+      - "6432"
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 6432"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  doctbase-data:
+  postgres-data:

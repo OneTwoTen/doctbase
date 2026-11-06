@@ -1,0 +1,32 @@
+name: doctbase-dev
+
+# Local development/test toolchain for Doctbase.
+#
+# Usage (from the repository root):
+#   docker compose -f deploy/dev/compose.yml build
+#   docker compose -f deploy/dev/compose.yml run --rm toolchain zig build
+#   docker compose -f deploy/dev/compose.yml run --rm toolchain zig build test --summary all
+#   docker compose -f deploy/dev/compose.yml run --rm toolchain zig fmt --check build.zig apps packages tests
+#
+# The repository is bind-mounted at /src, so edits on the host are visible
+# immediately and build output lands in the host's zig-out/.zig-cache.
+# PostgreSQL/PgBouncer/Caddy dev services are added by task T010.
+#
+# On Linux hosts whose uid is not 1000, pass the host identity to avoid files
+# owned by another user:
+#   docker compose -f deploy/dev/compose.yml run --rm \
+#     --user "$(id -u):$(id -g)" toolchain zig build test
+
+services:
+  toolchain:
+    image: doctbase/dev-toolchain:${ZIG_VERSION:-0.17.1}
+    build:
+      context: ../..
+      dockerfile: deploy/dev/Dockerfile
+      args:
+        ZIG_VERSION: ${ZIG_VERSION:-0.17.1}
+    working_dir: /src
+    init: true
+    volumes:
+      - ../..:/src
+    command: ["zig", "version"]

@@ -224,6 +224,30 @@ pub fn build(b: *std.Build) !void {
     const run_security_tests = b.addRunArtifact(security_tests);
     test_step.dependOn(&run_security_tests.step);
 
+    const runtime_tcp_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/integration/runtime_tcp_test.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "runtime", .module = runtime_mod },
+            },
+        }),
+    });
+    test_step.dependOn(&b.addRunArtifact(runtime_tcp_tests).step);
+
+    const runtime_tcp_security_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/security/runtime_tcp_security_test.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "runtime", .module = runtime_mod },
+            },
+        }),
+    });
+    test_step.dependOn(&b.addRunArtifact(runtime_tcp_security_tests).step);
+
     const health_probe_tests = b.addTest(.{
         .root_module = b.createModule(.{
             .root_source_file = b.path("tests/integration/health_probe_test.zig"),
