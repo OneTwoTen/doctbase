@@ -1,5 +1,6 @@
 const std = @import("std");
 const lifecycle = @import("service_lifecycle");
+const config_cmd = @import("commands/config.zig");
 
 var stop_requested: std.atomic.Value(bool) = .init(false);
 
@@ -21,6 +22,12 @@ pub fn main(init: std.process.Init) !void {
     }
     if (std.mem.eql(u8, command, "restart")) {
         return runRestart(init, &args);
+    }
+    if (std.mem.eql(u8, command, "logs")) {
+        return runLogs(init, &args);
+    }
+    if (std.mem.eql(u8, command, "config")) {
+        return config_cmd.run(init, &args);
     }
     if (std.mem.eql(u8, command, "--help") or std.mem.eql(u8, command, "help")) {
         printUsage();
@@ -113,9 +120,21 @@ fn runDev(init: std.process.Init, args: *std.process.Args.Iterator) !void {
 
 fn runStatus(init: std.process.Init, args: *std.process.Args.Iterator) !void {
     var systemctl_path: []const u8 = "systemctl";
+    var docker_path: []const u8 = "docker";
+    var compose_file: ?[]const u8 = null;
+    var use_compose: bool = false;
+
     while (args.next()) |arg| {
         if (std.mem.eql(u8, arg, "--systemctl")) {
             systemctl_path = args.next() orelse return error.MissingValue;
+        } else if (std.mem.eql(u8, arg, "--compose") or std.mem.eql(u8, arg, "--docker")) {
+            use_compose = true;
+        } else if (std.mem.eql(u8, arg, "--compose-file")) {
+            use_compose = true;
+            compose_file = args.next() orelse return error.MissingValue;
+        } else if (std.mem.eql(u8, arg, "--docker-path")) {
+            use_compose = true;
+            docker_path = args.next() orelse return error.MissingValue;
         } else if (std.mem.eql(u8, arg, "--help")) {
             printUsage();
             return;
@@ -124,16 +143,34 @@ fn runStatus(init: std.process.Init, args: *std.process.Args.Iterator) !void {
         }
     }
 
-    var systemd = lifecycle.systemd.SystemdDriver.init(init.gpa, init.io, .{
-        .systemctl_path = systemctl_path,
-    });
-    const driver = systemd.driver();
-    defer driver.deinit();
+    if (use_compose) {
+        var compose = lifecycle.compose.ComposeDriver.init(init.gpa, init.io, .{
+            .docker_path = docker_path,
+            .compose_file = compose_file,
+        });
+        const driver = compose.driver();
+        defer driver.deinit();
+        try displayStatus(init, driver, true);
+    } else {
+        var systemd = lifecycle.systemd.SystemdDriver.init(init.gpa, init.io, .{
+            .systemctl_path = systemctl_path,
+        });
+        const driver = systemd.driver();
+        defer driver.deinit();
+        try displayStatus(init, driver, false);
+    }
+}
 
+fn displayStatus(init: std.process.Init, driver: lifecycle.driver.LifecycleDriver, is_compose: bool) !void {
     const states = try driver.list(init.gpa);
     defer init.gpa.free(states);
 
-    std.debug.print("SERVICE      STATE     HEALTH   UNIT                              ENDPOINT\n", .{});
+    if (is_compose) {
+        std.debug.print("SERVICE      STATE     HEALTH   COMPOSE_SERVICE                   ENDPOINT\n", .{});
+    } else {
+        std.debug.print("SERVICE      STATE     HEALTH   UNIT                              ENDPOINT\n", .{});
+    }
+
     for (states) |*state| {
         if (state.endpoint) |endpoint| {
             if (lifecycle.health_probe.probe(init.io, endpoint, 500, "/readyz")) |probe| {
@@ -160,10 +197,22 @@ fn runStatus(init: std.process.Init, args: *std.process.Args.Iterator) !void {
 
 fn runRestart(init: std.process.Init, args: *std.process.Args.Iterator) !void {
     var systemctl_path: []const u8 = "systemctl";
+    var docker_path: []const u8 = "docker";
+    var compose_file: ?[]const u8 = null;
+    var use_compose: bool = false;
     var service_name: ?[]const u8 = null;
+
     while (args.next()) |arg| {
         if (std.mem.eql(u8, arg, "--systemctl")) {
             systemctl_path = args.next() orelse return error.MissingValue;
+        } else if (std.mem.eql(u8, arg, "--compose") or std.mem.eql(u8, arg, "--docker")) {
+            use_compose = true;
+        } else if (std.mem.eql(u8, arg, "--compose-file")) {
+            use_compose = true;
+            compose_file = args.next() orelse return error.MissingValue;
+        } else if (std.mem.eql(u8, arg, "--docker-path")) {
+            use_compose = true;
+            docker_path = args.next() orelse return error.MissingValue;
         } else if (std.mem.eql(u8, arg, "--help")) {
             printUsage();
             return;
@@ -180,18 +229,95 @@ fn runRestart(init: std.process.Init, args: *std.process.Args.Iterator) !void {
         return error.UnknownService;
     };
 
-    var systemd = lifecycle.systemd.SystemdDriver.init(init.gpa, init.io, .{
-        .systemctl_path = systemctl_path,
-    });
-    const driver = systemd.driver();
-    defer driver.deinit();
+    var result: lifecycle.driver.OperationResult = undefined;
+    if (use_compose) {
+        var compose = lifecycle.compose.ComposeDriver.init(init.gpa, init.io, .{
+            .docker_path = docker_path,
+            .compose_file = compose_file,
+        });
+        const driver = compose.driver();
+        defer driver.deinit();
+        result = try driver.restart(key);
+    } else {
+        var systemd = lifecycle.systemd.SystemdDriver.init(init.gpa, init.io, .{
+            .systemctl_path = systemctl_path,
+        });
+        const driver = systemd.driver();
+        defer driver.deinit();
+        result = try driver.restart(key);
+    }
 
-    const result = try driver.restart(key);
     if (!result.ok) {
         std.log.err("restart {s} failed: {s}", .{ name, result.error_code orelse "unknown" });
         std.process.exit(6);
     }
     std.log.info("restarted {s}", .{name});
+}
+
+fn runLogs(init: std.process.Init, args: *std.process.Args.Iterator) !void {
+    var journalctl_path: []const u8 = "journalctl";
+    var docker_path: []const u8 = "docker";
+    var compose_file: ?[]const u8 = null;
+    var use_compose: bool = false;
+    var service_name: ?[]const u8 = null;
+    var tail: u32 = 50;
+
+    while (args.next()) |arg| {
+        if (std.mem.eql(u8, arg, "--journalctl") or std.mem.eql(u8, arg, "--systemctl")) {
+            journalctl_path = args.next() orelse return error.MissingValue;
+        } else if (std.mem.eql(u8, arg, "--compose") or std.mem.eql(u8, arg, "--docker")) {
+            use_compose = true;
+        } else if (std.mem.eql(u8, arg, "--compose-file")) {
+            use_compose = true;
+            compose_file = args.next() orelse return error.MissingValue;
+        } else if (std.mem.eql(u8, arg, "--docker-path")) {
+            use_compose = true;
+            docker_path = args.next() orelse return error.MissingValue;
+        } else if (std.mem.eql(u8, arg, "--tail") or std.mem.eql(u8, arg, "-n")) {
+            const val = args.next() orelse return error.MissingValue;
+            tail = std.fmt.parseInt(u32, val, 10) catch 50;
+        } else if (std.mem.eql(u8, arg, "--help")) {
+            printUsage();
+            return;
+        } else if (service_name == null) {
+            service_name = arg;
+        } else {
+            return error.UnknownOption;
+        }
+    }
+
+    const name = service_name orelse return error.MissingService;
+    const key = lifecycle.registry.parse(name) orelse {
+        std.log.err("unknown service: {s}", .{name});
+        return error.UnknownService;
+    };
+    const spec = lifecycle.registry.get(key);
+
+    if (use_compose) {
+        var compose = lifecycle.compose.ComposeDriver.init(init.gpa, init.io, .{
+            .docker_path = docker_path,
+            .compose_file = compose_file,
+        });
+        const log_output = compose.logs(key, tail) catch |err| {
+            std.log.err("failed to fetch compose logs: {s}", .{@errorName(err)});
+            return err;
+        };
+        defer init.gpa.free(log_output);
+        std.debug.print("{s}", .{log_output});
+    } else {
+        const unit = spec.unit_name orelse return error.NoUnit;
+        var tail_buf: [16]u8 = undefined;
+        const tail_str = std.fmt.bufPrint(&tail_buf, "{d}", .{tail}) catch "50";
+        const result = std.process.run(init.gpa, init.io, .{
+            .argv = &.{ journalctl_path, "-u", unit, "--no-pager", "-n", tail_str },
+        }) catch |err| {
+            std.log.err("failed to run journalctl: {s}", .{@errorName(err)});
+            return err;
+        };
+        defer init.gpa.free(result.stdout);
+        defer init.gpa.free(result.stderr);
+        std.debug.print("{s}", .{result.stdout});
+    }
 }
 
 fn printStatus(io: std.Io, driver: lifecycle.driver.LifecycleDriver) !void {
@@ -231,14 +357,21 @@ fn printUsage() void {
         \\Commands:
         \\  dev [--run-dir DIR] [--bin-dir DIR] [--config FILE] [--token TOKEN]
         \\      [--service NAME]...
-        \\  status [--systemctl PATH]
-        \\  restart <service> [--systemctl PATH]
+        \\  status [--systemctl PATH] [--compose] [--compose-file FILE]
+        \\  restart <service> [--systemctl PATH] [--compose] [--compose-file FILE]
+        \\  logs <service> [--tail N] [--journalctl PATH] [--compose]
+        \\  config <validate|show|explain> [--config PATH]
         \\
         \\Examples:
         \\  doctbase dev
         \\  doctbase dev --service gateway --service auth --token dev-secret
         \\  doctbase status
+        \\  doctbase status --compose
         \\  doctbase restart auth
+        \\  doctbase logs auth --tail 100
+        \\  doctbase config validate
+        \\  doctbase config show
+        \\  doctbase config explain database.mode
         \\
     , .{});
 }

@@ -49,24 +49,24 @@ Monorepo theo [plan.md](./plan.md): `apps/`, `packages/`, `dashboard/`, `infrast
 
 - [ ] T011 Create executable skeletons for all services in `apps/*/src/main.zig` and `build.zig` targets
 - [x] T012 Implement TOML parser adapter in `packages/config/src/toml.zig`
-- [ ] T013 Implement config schema, defaults and precedence in `packages/config/src/schema.zig`, `packages/config/src/defaults.zig`
-- [ ] T014 Implement semantic validation (domain, ports, service deps, sizes) in `packages/config/src/validate.zig`
-- [ ] T015 Implement `config validate/show/diff/render/explain` in `apps/cli/src/commands/config.zig`
+- [x] T013 Implement config schema, defaults and precedence in `packages/config/src/schema.zig`, `packages/config/src/defaults.zig`
+- [x] T014 Implement semantic validation (domain, ports, service deps, sizes) in `packages/config/src/validate.zig`
+- [x] T015 Implement `config validate/show/diff/render/explain` in `apps/cli/src/commands/config.zig`
 - [ ] T016 Implement service protocol types, `ReadinessCheck`, `RuntimeInfo`, health/ready/metrics/error envelope in `packages/service-protocol/src/protocol.zig`, `packages/service-protocol/src/errors.zig`
 - [ ] T017 Implement httpz wrapper, UDS/TCP listener, router and middleware (request ID, panic recovery, body limit) in `packages/http/src/server.zig`, `packages/http/src/uds.zig`, `packages/http/src/middleware.zig`
 - [ ] T018 Implement structured JSON logging, request correlation and redaction in `packages/telemetry/src/log.zig`, `packages/telemetry/src/redact.zig`
 - [ ] T019 Implement Prometheus metrics helpers and common runtime metrics in `packages/telemetry/src/metrics.zig`
 - [x] T020 Define `LifecycleDriver` interface, `ServiceSpec` registry and `FakeDriver` in `packages/service-lifecycle/src/driver.zig`, `packages/service-lifecycle/src/registry.zig`, `packages/service-lifecycle/src/fake.zig`
 - [x] T021 Implement systemd driver (systemctl argv allowlist, status mapping, start/stop/restart; journalctl logs để slice sau) in `packages/service-lifecycle/src/systemd.zig`
-- [ ] T022 Implement Docker Compose driver (compose argv, `ps`/`logs`, allowlist) in `packages/service-lifecycle/src/compose.zig`
+- [x] T022 Implement Docker Compose driver (compose argv, `ps`/`logs`, allowlist) in `packages/service-lifecycle/src/compose.zig`
 - [x] T023 Implement foreground `DevDriver` and `doctbase dev` command in `packages/service-lifecycle/src/dev.zig`, `apps/cli/src/main.zig`
 - [ ] T024 Implement CLI globals (`--config`, `--json`, `--yes`, `--dry-run`), JSON envelope and exit codes in `apps/cli/src/main.zig`, `apps/cli/src/output.zig`
 - [x] T025 Implement error code registry and docs URL mapping in `packages/core/src/errors.zig`
-- [ ] T026 Create control DB schema/migrations for Instance, AdminUser, AdminSession, Project, ProjectService, Domain, ApiKey, SigningKey, SecretMetadata, Backup, AuditEvent, Operation, ServiceRuntime in `packages/migrations/control/001_init.sql`
-- [ ] T027 Implement PostgreSQL pool, migration runner and RLS helpers in `packages/postgres/src/pool.zig`, `packages/postgres/src/migrate.zig`, `packages/postgres/src/rls.zig`
+- [x] T026 Create control DB schema/migrations for Instance, AdminUser, AdminSession, Project, ProjectService, Domain, ApiKey, SigningKey, SecretMetadata, Backup, AuditEvent, Operation, ServiceRuntime in `packages/migrations/control/001_init.sql`
+- [x] T027 Implement PostgreSQL pool, migration runner and RLS helpers in `packages/postgres/src/pool.zig`, `packages/postgres/src/migrate.zig`, `packages/postgres/src/rls.zig`
 - [ ] T028 Implement secret generation, Argon2id password hashing, ULID IDs and constant-time compare in `packages/security/src/secrets.zig`, `packages/security/src/password.zig`, `packages/security/src/ids.zig`
 - [ ] T029 Implement render pipeline skeleton (staging, atomic write, diff, rollback) in `packages/config/src/render.zig`, `packages/config/src/apply.zig`
-- [ ] T030 Implement Management API skeleton and session middleware in `apps/management/src/main.zig`, `apps/management/src/api/router.zig`, `apps/management/src/auth/session.zig`
+- [x] T030 Implement Management API skeleton and session middleware in `apps/management/src/main.zig`, `apps/management/src/api/router.zig`, `apps/management/src/auth/session.zig`
 - [ ] T031 Implement gateway skeleton with project registry loader, host/path routing and upstream proxying in `apps/gateway/src/main.zig`, `apps/gateway/src/project_registry.zig`, `apps/gateway/src/router.zig`
 - [ ] T032 Implement auth service skeleton and internal key API stub in `apps/auth/src/main.zig`, `apps/auth/src/keys.zig`
 - [ ] T033 Implement dashboard shell, API client and auth store in `dashboard/src/lib/api.ts`, `dashboard/src/lib/auth.ts`, `dashboard/src/routes/+page.svelte`
@@ -91,10 +91,10 @@ Monorepo theo [plan.md](./plan.md): `apps/`, `packages/`, `dashboard/`, `infrast
 - [ ] T156 [P] Unit test runtime bootstrap, config hash, readiness aggregation and shutdown in `tests/unit/runtime_bootstrap_test.zig`, `tests/unit/runtime_health_test.zig`, `tests/unit/runtime_shutdown_test.zig`
 - [x] T157 [P] Unit test service registry, driver state mapping and `FakeDriver` in `packages/service-lifecycle/src/registry.zig`, `packages/service-lifecycle/src/fake.zig` (inline tests)
 - [x] T158 [P] Integration test runtime over temporary UDS, health/ready/info and SIGTERM cleanup in `tests/integration/runtime_uds_test.zig`
-- [ ] T159 [P] Security test UDS mode/owner, peer credentials, internal token and header strip in `tests/security/runtime_security_test.zig`
+- [x] T159 [P] Security test UDS mode/owner, peer credentials, internal token and header strip in `tests/security/runtime_security_test.zig`
 - [x] T160 [P] Integration test `doctbase dev` with ≥2 services, prefixed logs and clean SIGTERM in `tests/integration/dev_runner_test.zig`
 
-**Slice 2 status (2026-11-06)**: T020, T021, T023, T155, T157, T160, T161 đã xong. `packages/service-lifecycle` có registry, `LifecycleDriver`, `FakeDriver`, `DevDriver`, `SystemdDriver` (systemctl argv + fake test), health probe; `doctbase dev` chạy `gateway` + `auth`; `doctbase status/restart` dùng systemd driver. `ComposeDriver`, ServiceRuntime aggregator và Management API là slice tiếp theo.
+**Slice 3 status (2026-11-06)**: T020, T021, T022, T023, T155, T157, T159, T160, T161 đã xong. `packages/service-lifecycle` có registry, `LifecycleDriver`, `FakeDriver`, `DevDriver`, `SystemdDriver`, `ComposeDriver` (argv allowlist, ps json parsing, logs, mock tests), và health probe; `apps/management/src/services/runtime.zig` có `ServiceRuntimeAggregator` với TTL caching, concurrent operation lock và infra restart protection; CLI hỗ trợ `doctbase dev/status/restart/logs` cho cả native và Docker Compose mode.
 
 **Checkpoint**: Runtime + Service Manager foundation ready — US1 có thể bắt đầu; không có supervisor mới.
 
