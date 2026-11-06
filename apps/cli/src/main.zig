@@ -1,6 +1,7 @@
 const std = @import("std");
 const lifecycle = @import("service_lifecycle");
 const config_cmd = @import("commands/config.zig");
+pub const output = @import("output.zig");
 
 var stop_requested: std.atomic.Value(bool) = .init(false);
 
@@ -9,29 +10,53 @@ pub fn main(init: std.process.Init) !void {
     defer args.deinit();
     _ = args.next();
 
-    const command = args.next() orelse {
+    var globals = output.GlobalFlags{};
+    var command: ?[]const u8 = null;
+
+    while (args.next()) |arg| {
+        if (std.mem.eql(u8, arg, "--config")) {
+            globals.config_path = args.next() orelse return error.MissingValue;
+        } else if (std.mem.eql(u8, arg, "--json")) {
+            globals.json = true;
+        } else if (std.mem.eql(u8, arg, "--yes") or std.mem.eql(u8, arg, "-y")) {
+            globals.yes = true;
+        } else if (std.mem.eql(u8, arg, "--dry-run")) {
+            globals.dry_run = true;
+        } else if (std.mem.eql(u8, arg, "--verbose") or std.mem.eql(u8, arg, "-v")) {
+            globals.verbose = true;
+        } else if (std.mem.eql(u8, arg, "--no-color")) {
+            globals.no_color = true;
+        } else if (std.mem.eql(u8, arg, "--version")) {
+            std.debug.print("doctbase 0.1.0\n", .{});
+            return;
+        } else if (std.mem.eql(u8, arg, "--help") or std.mem.eql(u8, arg, "help")) {
+            printUsage();
+            return;
+        } else if (command == null) {
+            command = arg;
+            break;
+        }
+    }
+
+    const cmd = command orelse {
         printUsage();
         return;
     };
 
-    if (std.mem.eql(u8, command, "dev")) {
+    if (std.mem.eql(u8, cmd, "dev")) {
         return runDev(init, &args);
     }
-    if (std.mem.eql(u8, command, "status")) {
+    if (std.mem.eql(u8, cmd, "status")) {
         return runStatus(init, &args);
     }
-    if (std.mem.eql(u8, command, "restart")) {
+    if (std.mem.eql(u8, cmd, "restart")) {
         return runRestart(init, &args);
     }
-    if (std.mem.eql(u8, command, "logs")) {
+    if (std.mem.eql(u8, cmd, "logs")) {
         return runLogs(init, &args);
     }
-    if (std.mem.eql(u8, command, "config")) {
+    if (std.mem.eql(u8, cmd, "config")) {
         return config_cmd.run(init, &args);
-    }
-    if (std.mem.eql(u8, command, "--help") or std.mem.eql(u8, command, "help")) {
-        printUsage();
-        return;
     }
 
     printUsage();

@@ -13,12 +13,12 @@ pub const ValidationResult = struct {
     pub fn init(allocator: std.mem.Allocator) ValidationResult {
         return .{
             .allocator = allocator,
-            .errors = std.ArrayList(ValidationError).init(allocator),
+            .errors = .empty,
         };
     }
 
     pub fn deinit(self: *ValidationResult) void {
-        self.errors.deinit();
+        self.errors.deinit(self.allocator);
     }
 
     pub fn isValid(self: ValidationResult) bool {
@@ -26,7 +26,7 @@ pub const ValidationResult = struct {
     }
 
     pub fn addError(self: *ValidationResult, field: []const u8, message: []const u8) !void {
-        try self.errors.append(.{ .field = field, .message = message });
+        try self.errors.append(self.allocator, .{ .field = field, .message = message });
     }
 };
 

@@ -43,8 +43,26 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
 
+    const telemetry_mod = b.addModule("telemetry", .{
+        .root_source_file = b.path("packages/telemetry/src/telemetry.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const http_mod = b.addModule("http", .{
+        .root_source_file = b.path("packages/http/src/http.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
     const postgres_mod = b.addModule("postgres", .{
         .root_source_file = b.path("packages/postgres/src/postgres.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const security_mod = b.addModule("security", .{
+        .root_source_file = b.path("packages/security/src/security.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -89,6 +107,71 @@ pub fn build(b: *std.Build) !void {
     });
     b.installArtifact(management);
 
+    const storage = b.addExecutable(.{
+        .name = "doctbase-storage",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("apps/storage/src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "runtime", .module = runtime_mod },
+            },
+        }),
+    });
+    b.installArtifact(storage);
+
+    const pg_meta = b.addExecutable(.{
+        .name = "doctbase-pg-meta",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("apps/pg-meta/src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "runtime", .module = runtime_mod },
+            },
+        }),
+    });
+    b.installArtifact(pg_meta);
+
+    const rest = b.addExecutable(.{
+        .name = "doctbase-rest",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("apps/rest/src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "runtime", .module = runtime_mod },
+            },
+        }),
+    });
+    b.installArtifact(rest);
+
+    const realtime = b.addExecutable(.{
+        .name = "doctbase-realtime",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("apps/realtime/src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "runtime", .module = runtime_mod },
+            },
+        }),
+    });
+    b.installArtifact(realtime);
+
+    const image_proxy = b.addExecutable(.{
+        .name = "doctbase-image-proxy",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("apps/image-proxy/src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "runtime", .module = runtime_mod },
+            },
+        }),
+    });
+    b.installArtifact(image_proxy);
+
     const cli = b.addExecutable(.{
         .name = "doctbase",
         .root_module = b.createModule(.{
@@ -109,7 +192,7 @@ pub fn build(b: *std.Build) !void {
     run_step.dependOn(&run_gateway.step);
 
     const test_step = b.step("test", "Run unit tests");
-    inline for (.{ core_mod, config_mod, protocol_mod, runtime_mod, lifecycle_mod, postgres_mod }) |module| {
+    inline for (.{ core_mod, config_mod, protocol_mod, runtime_mod, lifecycle_mod, postgres_mod, telemetry_mod, http_mod, security_mod }) |module| {
         const tests = b.addTest(.{ .root_module = module });
         const run_tests = b.addRunArtifact(tests);
         test_step.dependOn(&run_tests.step);
@@ -171,30 +254,7 @@ pub fn build(b: *std.Build) !void {
 
     const management_tests = b.addTest(.{
         .root_module = b.createModule(.{
-            .root_source_file = b.path("apps/management/src/services/runtime.zig"),
-            .target = target,
-            .optimize = optimize,
-            .imports = &.{
-                .{ .name = "service_lifecycle", .module = lifecycle_mod },
-            },
-        }),
-    });
-    const run_management_tests = b.addRunArtifact(management_tests);
-    test_step.dependOn(&run_management_tests.step);
-
-    const management_session_tests = b.addTest(.{
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("apps/management/src/auth/session.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
-    });
-    const run_management_session_tests = b.addRunArtifact(management_session_tests);
-    test_step.dependOn(&run_management_session_tests.step);
-
-    const management_router_tests = b.addTest(.{
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("apps/management/src/api/router.zig"),
+            .root_source_file = b.path("apps/management/src/tests.zig"),
             .target = target,
             .optimize = optimize,
             .imports = &.{
@@ -204,6 +264,66 @@ pub fn build(b: *std.Build) !void {
             },
         }),
     });
-    const run_management_router_tests = b.addRunArtifact(management_router_tests);
-    test_step.dependOn(&run_management_router_tests.step);
+    const cli_output_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("apps/cli/src/output.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    const run_cli_output_tests = b.addRunArtifact(cli_output_tests);
+    test_step.dependOn(&run_cli_output_tests.step);
+
+    const gateway_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("apps/gateway/src/tests.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    const run_gateway_tests = b.addRunArtifact(gateway_tests);
+    test_step.dependOn(&run_gateway_tests.step);
+
+    const auth_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("apps/auth/src/keys.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    const run_auth_tests = b.addRunArtifact(auth_tests);
+    test_step.dependOn(&run_auth_tests.step);
+
+    const harness_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/integration/harness.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    const run_harness_tests = b.addRunArtifact(harness_tests);
+    test_step.dependOn(&run_harness_tests.step);
+
+    inline for (.{
+        "tests/unit/runtime_bootstrap_test.zig",
+        "tests/unit/runtime_health_test.zig",
+        "tests/unit/runtime_shutdown_test.zig",
+    }) |test_file| {
+        const u_test = b.addTest(.{
+            .root_module = b.createModule(.{
+                .root_source_file = b.path(test_file),
+                .target = target,
+                .optimize = optimize,
+                .imports = &.{
+                    .{ .name = "runtime", .module = runtime_mod },
+                    .{ .name = "config", .module = config_mod },
+                },
+            }),
+        });
+        const run_u_test = b.addRunArtifact(u_test);
+        test_step.dependOn(&run_u_test.step);
+    }
+
+    const run_management_tests = b.addRunArtifact(management_tests);
+    test_step.dependOn(&run_management_tests.step);
 }

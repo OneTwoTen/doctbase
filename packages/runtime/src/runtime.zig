@@ -6,6 +6,11 @@ const core = @import("core");
 
 const Allocator = std.mem.Allocator;
 
+pub const app = @import("app.zig");
+pub const bootstrap = @import("bootstrap.zig");
+pub const sd_notify = @import("sd_notify.zig");
+pub const secrets = @import("secrets.zig");
+
 pub const Mode = enum {
     native,
     docker,
@@ -422,11 +427,11 @@ pub fn runService(init: std.process.Init, service_key: []const u8) !void {
         .allow_missing_config = mode == .dev,
     };
 
-    const app = try Runtime.create(init.gpa, init.io, options);
-    defer app.destroy();
+    const rt = try Runtime.create(init.gpa, init.io, options);
+    defer rt.destroy();
 
-    std.log.info("starting {s} on {s}", .{ service_key, app.socket_path.? });
-    try app.listen();
+    std.log.info("starting {s} on {s}", .{ service_key, rt.socket_path.? });
+    try rt.listen();
     std.log.info("{s} stopped", .{service_key});
 }
 
@@ -434,4 +439,11 @@ test "constant-time equality" {
     try std.testing.expect(constantTimeEql("secret", "secret"));
     try std.testing.expect(!constantTimeEql("secret", "secreu"));
     try std.testing.expect(!constantTimeEql("secret", "secret-longer"));
+}
+
+test {
+    _ = app;
+    _ = bootstrap;
+    _ = sd_notify;
+    _ = secrets;
 }

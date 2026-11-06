@@ -58,6 +58,12 @@ pub const Problem = struct {
     docs_url: []const u8,
 };
 
+pub const errors = @import("errors.zig");
+
+test {
+    _ = errors;
+}
+
 test "ready response serializes enum tags" {
     var out = std.Io.Writer.Allocating.init(std.testing.allocator);
     defer out.deinit();
