@@ -61,7 +61,16 @@ Dừng bằng `SIGTERM`/`SIGINT`; runtime drain, đóng server và gỡ socket.
 
 ## 3. Cấu hình
 
-Runtime đọc TOML tại `DOCTBASE_CONFIG` hoặc `/etc/doctbase/doctbase.toml`. Nếu file không tồn tại và `allow_missing_config = true`, runtime dùng default (dev mode).
+Runtime đọc TOML tại `DOCTBASE_CONFIG` hoặc `/etc/doctbase/doctbase.toml`. Nếu file không tồn tại và `allow_missing_config = true`, runtime dùng default (dev mode). Trong Docker/Coolify mode, file này do `deploy/docker/entrypoint.sh` sinh từ biến môi trường.
+
+Listener mặc định là Unix domain socket. Đặt `DOCTBASE_LISTEN=host:port` (IPv4) để chuyển sang TCP — dùng cho Docker/Coolify, nơi mỗi service là một container riêng:
+
+```bash
+DOCTBASE_MODE=docker \
+DOCTBASE_LISTEN=0.0.0.0:8080 \
+DOCTBASE_INTERNAL_TOKEN=dev-secret \
+./zig-out/bin/doctbase-gateway
+```
 
 Ví dụ:
 
@@ -100,7 +109,8 @@ Bao gồm:
 - TOML parser + schema/defaults + config hash.
 - Error registry + protocol serialization.
 - Runtime UDS integration: health/ready/info, auth, SIGTERM cleanup.
-- Security: UDS mode `0660`, live socket không bị ghi đè, native mode từ chối internal request thiếu token.
+- Runtime TCP integration (`tests/integration/runtime_tcp_test.zig`): health/ready/info qua TCP, UDS vẫn là default, graceful shutdown.
+- Security: UDS mode `0660`, live socket không bị ghi đè, native mode từ chối internal request thiếu token; TCP mode từ chối token thiếu/sai (`tests/security/runtime_tcp_security_test.zig`).
 - Service lifecycle: registry, `FakeDriver`, health probe, `DevDriver` start/stop/restart với gateway + auth thật.
 - `SystemdDriver`: parse `systemctl show`, state mapping, restart policy, fake `systemctl` test.
 

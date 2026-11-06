@@ -50,6 +50,24 @@ Lưu ý:
 - Trên Linux, nếu uid của bạn khác `1000`, truyền `--user "$(id -u):$(id -g)"` cho `docker compose run` để file sinh ra không thuộc user lạ. Trên Windows/macOS không cần.
 - Trên Windows cần Docker Desktop (WSL2 backend) và quyền admin để cài đặt. Nếu chưa có Docker, xem mục CI bên dưới.
 
+## Image production và compose resource
+
+Image production nằm trong [`deploy/docker/Dockerfile`](../deploy/docker/Dockerfile); compose cho Coolify nằm trong [`deploy/docker/compose.yml`](../deploy/docker/compose.yml).
+
+```bash
+# Validate cấu hình và các profile
+docker compose -f deploy/docker/compose.yml config -q
+docker compose -f deploy/docker/compose.yml --profile bundled config -q
+docker compose -f deploy/docker/compose.yml --profile optional config -q
+
+# Build và chạy thử gateway + management (cần biến trong .env.example)
+cp deploy/docker/.env.example deploy/docker/.env
+docker compose -f deploy/docker/compose.yml --env-file deploy/docker/.env up --build gateway management
+docker compose -f deploy/docker/compose.yml exec gateway curl -fsS http://127.0.0.1:8080/healthz
+```
+
+Không container nào publish cổng; proxy của Coolify/Traefik route vào cổng nội bộ. Quy trình Coolify đầy đủ: [Triển khai trên Coolify](coolify.md).
+
 ## CI
 
 [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) chạy trên `ubuntu-24.04` cho mỗi push vào `main`, mỗi pull request và chạy tay (`workflow_dispatch`). Pipeline:
@@ -61,6 +79,8 @@ Lưu ý:
 5. Cross-build `-Dtarget=aarch64-linux-gnu` để bắt lỗi kiến trúc sớm.
 
 Job thứ hai (`docker-toolchain`) build `deploy/dev/Dockerfile` rồi chạy `zig build test` bên trong container, để đường Docker được kiểm chứng ngay trên CI.
+
+Job thứ ba (`compose-resource`) validate `deploy/docker/compose.yml` và các profile, build image production cho gateway/management, chạy hai container, kiểm tra `/readyz` qua TCP, xác nhận endpoint nội bộ từ chối request thiếu token, và khẳng định không service nào publish cổng.
 
 E2E install matrix (Ubuntu 24.04, Debian 13, x86_64/arm64) nằm ở task T136 trong [`specs/001-doctbase-install-config/tasks.md`](../specs/001-doctbase-install-config/tasks.md) và chưa được bật.
 

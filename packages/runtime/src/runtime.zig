@@ -29,6 +29,10 @@ pub const Options = struct {
     config_path: ?[]const u8 = null,
     run_dir: ?[]const u8 = null,
     socket_path: ?[]const u8 = null,
+    /// Optional TCP endpoint in `host:port` form (IPv4). When set, the service
+    /// listens on TCP instead of a Unix domain socket. Docker/Coolify mode uses
+    /// this; native mode keeps the default UDS listener.
+    listen: ?[]const u8 = null,
     socket_mode: u32 = 0o660,
     internal_token: ?[]const u8 = null,
     allow_missing_config: bool = true,
@@ -42,6 +46,7 @@ pub const Runtime = struct {
     config: config_mod.Config,
     config_hash: []u8,
     socket_path: ?[]u8,
+    address: httpz.Config.Address,
     context: Context,
     server: httpz.Server(*Context),
     started_at: i64,
@@ -68,7 +73,9 @@ pub const Runtime = struct {
         const config_hash = try config_mod.configHash(allocator, &config);
         errdefer allocator.free(config_hash);
 
-        const socket_path = if (options.socket_path) |path|
+        const socket_path: ?[]u8 = if (options.listen != null)
+            null
+        else if (options.socket_path) |path|
             try allocator.dupe(u8, path)
         else blk: {
             const run_dir = options.run_dir orelse if (options.mode == .dev) "/tmp/doctbase" else "/run/doctbase";
@@ -78,9 +85,14 @@ pub const Runtime = struct {
             };
             break :blk try std.fmt.allocPrint(allocator, "{s}/{s}.sock", .{ run_dir, options.service_key });
         };
-        errdefer allocator.free(socket_path);
+        errdefer if (socket_path) |path| allocator.free(path);
 
-        try ensureSocketAvailable(io, socket_path);
+        if (socket_path) |path| try ensureSocketAvailable(io, path);
+
+        const address: httpz.Config.Address = if (options.listen) |spec|
+            try parseListenAddress(spec)
+        else
+            .{ .unix = socket_path.? };
 
         self.* = .{
             .allocator = allocator,
@@ -89,6 +101,7 @@ pub const Runtime = struct {
             .config = config,
             .config_hash = config_hash,
             .socket_path = socket_path,
+            .address = address,
             .context = undefined,
             .server = undefined,
             .started_at = std.Io.Timestamp.now(io, .real).toSeconds(),
@@ -96,7 +109,7 @@ pub const Runtime = struct {
         self.context = .{ .runtime = self };
 
         self.server = try httpz.Server(*Context).init(io, allocator, .{
-            .address = .{ .unix = self.socket_path.? },
+            .address = self.address,
         }, &self.context);
 
         var router = try self.server.router(.{});
@@ -388,6 +401,21 @@ fn watcherMain(runtime: *Runtime) void {
     if (runtime.server_running.load(.acquire)) runtime.server.stop();
 }
 
+/// Parses a `host:port` listen specification. Only IPv4 literals are accepted
+/// in Docker/Coolify mode; native mode keeps using Unix domain sockets.
+fn parseListenAddress(spec: []const u8) !httpz.Config.Address {
+    const colon = std.mem.lastIndexOfScalar(u8, spec, ':') orelse return error.InvalidListenAddress;
+    const host = spec[0..colon];
+    const port_text = spec[colon + 1 ..];
+    if (host.len == 0 or port_text.len == 0) return error.InvalidListenAddress;
+
+    const port = std.fmt.parseInt(u16, port_text, 10) catch return error.InvalidListenAddress;
+    if (std.mem.indexOfScalar(u8, host, ':') != null) {
+        return .{ .ip = try std.Io.net.IpAddress.parseIp6(host, port) };
+    }
+    return .{ .ip = try std.Io.net.IpAddress.parseIp4(host, port) };
+}
+
 fn ensureSocketAvailable(io: std.Io, path: []const u8) !void {
     const address = std.Io.net.UnixAddress.init(path) catch return error.SocketPathTooLong;
     var stream = address.connect(io) catch |err| switch (err) {
@@ -423,6 +451,7 @@ pub fn runService(init: std.process.Init, service_key: []const u8) !void {
         .config_path = environment.get("DOCTBASE_CONFIG"),
         .run_dir = environment.get("DOCTBASE_RUN_DIR"),
         .socket_path = environment.get("DOCTBASE_SOCKET_PATH"),
+        .listen = environment.get("DOCTBASE_LISTEN"),
         .internal_token = environment.get("DOCTBASE_INTERNAL_TOKEN"),
         .allow_missing_config = mode == .dev,
     };
@@ -430,7 +459,11 @@ pub fn runService(init: std.process.Init, service_key: []const u8) !void {
     const rt = try Runtime.create(init.gpa, init.io, options);
     defer rt.destroy();
 
-    std.log.info("starting {s} on {s}", .{ service_key, rt.socket_path.? });
+    if (rt.socket_path) |path| {
+        std.log.info("starting {s} on {s}", .{ service_key, path });
+    } else {
+        std.log.info("starting {s} on tcp {s}", .{ service_key, rt.options.listen.? });
+    }
     try rt.listen();
     std.log.info("{s} stopped", .{service_key});
 }

@@ -2,9 +2,12 @@
 .gitignore
 .github
 .zig-cache
+.zig-global-cache
 zig-out
 zig-pkg
-deploy/dev/compose.yml
+.env
+deploy/docker/.env
+deploy/dev
 docs
 specs
 dashboard/node_modules
