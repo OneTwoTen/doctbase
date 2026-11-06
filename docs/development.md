@@ -46,7 +46,8 @@ docker compose -f deploy/dev/compose.yml run --rm --entrypoint bash toolchain
 Lưu ý:
 
 - Image mặc định dùng `ZIG_VERSION=0.17.1`. Khi đổi `.zigversion`, chạy lại với `ZIG_VERSION=<phiên bản>` hoặc cập nhật biến môi trường để image và native build khớp nhau.
-- Global cache của Zig được giữ trong volume `zig-global-cache` để lần build sau không tải lại dependency.
+- Cache của Zig nằm trong repo (`.zig-cache/`, `.zig-global-cache/`), nên lần build sau không tải lại dependency và bạn xoá được bằng tay.
+- Trên Linux, nếu uid của bạn khác `1000`, truyền `--user "$(id -u):$(id -g)"` cho `docker compose run` để file sinh ra không thuộc user lạ. Trên Windows/macOS không cần.
 - Trên Windows cần Docker Desktop (WSL2 backend) và quyền admin để cài đặt. Nếu chưa có Docker, xem mục CI bên dưới.
 
 ## CI
@@ -58,6 +59,8 @@ Lưu ý:
 3. `zig build --summary all`.
 4. `zig build test --summary all`.
 5. Cross-build `-Dtarget=aarch64-linux-gnu` để bắt lỗi kiến trúc sớm.
+
+Job thứ hai (`docker-toolchain`) build `deploy/dev/Dockerfile` rồi chạy `zig build test` bên trong container, để đường Docker được kiểm chứng ngay trên CI.
 
 E2E install matrix (Ubuntu 24.04, Debian 13, x86_64/arm64) nằm ở task T136 trong [`specs/001-doctbase-install-config/tasks.md`](../specs/001-doctbase-install-config/tasks.md) và chưa được bật.
 

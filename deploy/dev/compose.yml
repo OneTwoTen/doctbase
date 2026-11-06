@@ -11,6 +11,11 @@ name: doctbase-dev
 # The repository is bind-mounted at /src, so edits on the host are visible
 # immediately and build output lands in the host's zig-out/.zig-cache.
 # PostgreSQL/PgBouncer/Caddy dev services are added by task T010.
+#
+# On Linux hosts whose uid is not 1000, pass the host identity to avoid files
+# owned by another user:
+#   docker compose -f deploy/dev/compose.yml run --rm \
+#     --user "$(id -u):$(id -g)" toolchain zig build test
 
 services:
   toolchain:
@@ -24,8 +29,4 @@ services:
     init: true
     volumes:
       - ../..:/src
-      - zig-global-cache:/home/dev/.cache/zig
     command: ["zig", "version"]
-
-volumes:
-  zig-global-cache:

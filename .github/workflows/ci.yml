@@ -59,3 +59,21 @@ jobs:
 
       - name: Cross-build (aarch64-linux)
         run: zig build -Dtarget=aarch64-linux-gnu --summary all
+
+  docker-toolchain:
+    name: Docker toolchain (build & test)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build toolchain image
+        run: docker compose -f deploy/dev/compose.yml build
+
+      - name: Build and test in container
+        run: |
+          set -euo pipefail
+          docker compose -f deploy/dev/compose.yml run --rm \
+            --user "$(id -u):$(id -g)" \
+            toolchain zig build test --summary all

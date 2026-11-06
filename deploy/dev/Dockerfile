@@ -13,7 +13,7 @@ FROM debian:13-slim
 ARG ZIG_VERSION=0.17.1
 ARG TARGETARCH
 
-ENV ZIG_GLOBAL_CACHE_DIR=/home/dev/.cache/zig \
+ENV ZIG_GLOBAL_CACHE_DIR=/src/.zig-global-cache \
     ZIG_LOCAL_CACHE_DIR=/src/.zig-cache
 
 RUN apt-get update \
