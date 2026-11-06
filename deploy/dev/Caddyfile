@@ -1,0 +1,9 @@
+{
+	admin off
+}
+
+:80 {
+	@health path /healthz
+	respond @health "ok" 200
+	respond "Doctbase development proxy" 200
+}

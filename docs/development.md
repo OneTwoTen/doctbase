@@ -90,3 +90,19 @@ E2E install matrix (Ubuntu 24.04, Debian 13, x86_64/arm64) nằm ở task T136 t
 zig build test --summary all
 ls zig-out/bin   # doctbase + 8 service binary
 ```
+
+## Integration dependencies
+
+PostgreSQL, PgBouncer, and Caddy are available under the opt-in `integration`
+profile. They have no published host ports; the test containers share only the
+Compose network. PostgreSQL uses trust authentication only in this isolated
+development profile.
+
+```bash
+docker compose -f deploy/dev/compose.yml --profile integration up -d postgres pgbouncer caddy
+docker compose -f deploy/dev/compose.yml run --rm toolchain zig build test --summary all
+docker compose -f deploy/dev/compose.yml --profile integration down
+```
+
+Add `--volumes` to the final `down` command only when you want to discard the
+local integration database and Caddy state.

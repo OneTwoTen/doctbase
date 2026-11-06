@@ -10,7 +10,9 @@ name: doctbase-dev
 #
 # The repository is bind-mounted at /src, so edits on the host are visible
 # immediately and build output lands in the host's zig-out/.zig-cache.
-# PostgreSQL/PgBouncer/Caddy dev services are added by task T010.
+# Integration dependencies are opt-in with `--profile integration` so a normal
+# toolchain build does not start infrastructure. The test profile has no public
+# ports and uses trust authentication only on its isolated Compose network.
 #
 # On Linux hosts whose uid is not 1000, pass the host identity to avoid files
 # owned by another user:
@@ -29,4 +31,66 @@ services:
     init: true
     volumes:
       - ../..:/src
+    environment:
+      DOCTBASE_TEST_DATABASE_URL: postgres://doctbase_test@postgres:5432/doctbase_test
+      DOCTBASE_TEST_POOLER_URL: postgres://doctbase_test@pgbouncer:6432/doctbase_test
     command: ["zig", "version"]
+
+  postgres:
+    profiles: ["integration"]
+    image: postgres:18
+    environment:
+      POSTGRES_DB: doctbase_test
+      POSTGRES_USER: doctbase_test
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - doctbase-dev-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U doctbase_test -d doctbase_test"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  pgbouncer:
+    profiles: ["integration"]
+    image: edoburu/pgbouncer:v1.24.1-p0
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: doctbase_test
+      AUTH_TYPE: trust
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: "100"
+      DEFAULT_POOL_SIZE: "10"
+    expose:
+      - "6432"
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 6432"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+  caddy:
+    profiles: ["integration"]
+    image: caddy:2
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - doctbase-dev-caddy-data:/data
+      - doctbase-dev-caddy-config:/config
+    expose:
+      - "80"
+    healthcheck:
+      test: ["CMD", "caddy", "validate", "--config", "/etc/caddy/Caddyfile"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  doctbase-dev-postgres:
+  doctbase-dev-caddy-data:
+  doctbase-dev-caddy-config:

@@ -17,6 +17,9 @@ Tài liệu cho Doctbase V1, được tổ chức theo **Spec Kit**. Các artifa
 
 ## Tài liệu nghiên cứu tham chiếu
 
+- [Quickstart](quickstart.md) — cách chạy hiện tại trong môi trường phát triển; hướng dẫn cài production sẽ được hoàn thiện cùng installer.
+- [Configuration reference](config-reference.md) — trạng thái hiện tại và contract TOML.
+- [Upgrade](upgrade.md) · [Backup and restore](backup-restore.md) · [Troubleshooting](troubleshooting.md).
 - [Nghiên cứu cài đặt & cấu hình dễ dàng](nghien-cuu-cai-dat-cau-hinh.md) — phân tích Supabase/Appwrite/PocketBase/Coolify/Dokploy, luồng cài native, mẫu cấu hình, backup/upgrade, test matrix, nguồn tham khảo.
 - [Core Runtime + Service Manager](runtime-service-manager.md) — trạng thái implementation, cách chạy gateway, endpoint và các slice tiếp theo.
 - [Phát triển, build và test](development.md) — build native, Docker toolchain (`deploy/dev`) và GitHub Actions CI.
