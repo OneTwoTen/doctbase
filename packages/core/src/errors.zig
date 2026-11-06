@@ -12,14 +12,22 @@ pub const Code = enum {
     shutdown_timeout,
     health_not_ready,
     not_found,
+    unauthorized,
+    forbidden,
+    conflict,
+    service_not_found,
+    service_not_restartable,
+    service_operation_in_progress,
 
     pub fn httpStatus(self: Code) u16 {
         return switch (self) {
             .internal => 500,
-            .config_not_found, .not_found => 404,
+            .config_not_found, .not_found, .service_not_found => 404,
             .config_invalid => 422,
             .socket_bind_failed, .socket_in_use, .socket_permission_denied => 503,
-            .internal_auth_failed => 401,
+            .internal_auth_failed, .unauthorized => 401,
+            .forbidden, .service_not_restartable => 403,
+            .conflict, .service_operation_in_progress => 409,
             .service_init_failed, .shutdown_timeout, .health_not_ready => 503,
         };
     }
@@ -37,6 +45,12 @@ pub const Code = enum {
             .shutdown_timeout => "Graceful shutdown timed out",
             .health_not_ready => "Service is not ready",
             .not_found => "Not found",
+            .unauthorized => "Authentication required",
+            .forbidden => "Permission denied",
+            .conflict => "Resource conflict",
+            .service_not_found => "Service not found",
+            .service_not_restartable => "Service cannot be restarted",
+            .service_operation_in_progress => "Service operation already in progress",
         };
     }
 
@@ -53,6 +67,12 @@ pub const Code = enum {
             .shutdown_timeout => "Increase the shutdown deadline or inspect hung requests",
             .health_not_ready => "Check /readyz dependency checks",
             .not_found => "Check the request path",
+            .unauthorized => "Log in or provide a valid session token",
+            .forbidden => "Action requires admin or owner role",
+            .conflict => "Retry when conflicting operation finishes",
+            .service_not_found => "Specify a valid service name from `doctbase status`",
+            .service_not_restartable => "Infrastructure services must be restarted manually via CLI",
+            .service_operation_in_progress => "Wait for the current operation to finish",
         };
     }
 
@@ -69,6 +89,12 @@ pub const Code = enum {
             .shutdown_timeout => "SHUTDOWN_TIMEOUT",
             .health_not_ready => "HEALTH_NOT_READY",
             .not_found => "NOT_FOUND",
+            .unauthorized => "UNAUTHORIZED",
+            .forbidden => "FORBIDDEN",
+            .conflict => "CONFLICT",
+            .service_not_found => "SERVICE_NOT_FOUND",
+            .service_not_restartable => "SERVICE_NOT_RESTARTABLE",
+            .service_operation_in_progress => "SERVICE_OPERATION_IN_PROGRESS",
         };
     }
 

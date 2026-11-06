@@ -1,7 +1,7 @@
 # Core Runtime + Service Manager
 
 **Feature**: `001-doctbase-install-config`  
-**Trạng thái**: Core Runtime + Service Manager Slice 2 đã implement (runtime, dev/status/restart, `DevDriver`, `SystemdDriver`, health probe). `ComposeDriver`, ServiceRuntime aggregator và Management API là slice tiếp theo.
+**Trạng thái**: Core Runtime + Service Manager Slice 3 đã implement (runtime, dev/status/restart/logs, `DevDriver`, `SystemdDriver`, `ComposeDriver`, health probe, `ServiceRuntimeAggregator`). Management HTTP endpoints (`/api/v1/services`), config render pipeline và control DB là các bước tiếp theo.
 
 ## 1. Thành phần
 
@@ -11,9 +11,9 @@
 | `packages/config` | TOML subset parser, schema/defaults, resolved config hash | Slice 1 |
 | `packages/core` | Error code registry + HTTP status + docs URL | Slice 1 |
 | `packages/service-protocol` | Readiness/info/problem response types | Slice 1 |
-| `packages/service-lifecycle` | `LifecycleDriver`, registry, systemd/Compose/dev/fake drivers, health probe | Slice 2: registry + fake + dev + systemd + probe |
-| `apps/cli` | `doctbase dev/status/restart` dùng lifecycle driver | Slice 2 |
-| `apps/management/src/services` | ServiceRuntime aggregator, cache, probe, restart operation | Chưa implement |
+| `packages/service-lifecycle` | `LifecycleDriver`, registry, systemd/Compose/dev/fake drivers, health probe | Slice 3: registry + fake + dev + systemd + compose + probe |
+| `apps/cli` | `doctbase dev/status/restart/logs` dùng lifecycle driver (native & Compose) | Slice 3 |
+| `apps/management/src/services` | ServiceRuntime aggregator, cache, probe, restart operation | Slice 3: aggregator + operation lock + cache |
 
 ## 2. Chạy thử gateway
 
@@ -106,10 +106,10 @@ Bao gồm:
 
 ## 6. Tiếp theo
 
-1. `ServiceRuntime` aggregator + `/services` API.
-2. `ComposeDriver` + Docker status.
-3. `journalctl` logs + redaction.
-4. `doctbase logs`, JSON/watch output.
+1. Expose `/api/v1/services` và `/api/v1/services/{name}/restart` trên Management HTTP server.
+2. Log redaction và output JSON/watch cho `doctbase logs`.
+3. Hoàn thiện config render pipeline (`doctbase config render/diff/explain`).
+4. Control DB schema & PostgreSQL connection pool (`packages/postgres`).
 5. `sd_notify` + credential-file loading cho production.
 
 Chi tiết quyết định: [research.md §14–§16](../specs/001-doctbase-install-config/research.md#14-core-runtime--shared-service-harness).
