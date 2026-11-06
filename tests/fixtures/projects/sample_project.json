@@ -1,0 +1,17 @@
+{
+  "id": "proj_01JTEST0000000000000000001",
+  "slug": "demo-app",
+  "name": "Demo Application",
+  "domain": "demo.example.com",
+  "database": {
+    "name": "doctbase_proj_demo_app",
+    "user": "doctbase_user_demo_app",
+    "port": 5433
+  },
+  "services": [
+    "auth",
+    "storage",
+    "rest",
+    "realtime"
+  ]
+}

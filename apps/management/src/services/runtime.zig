@@ -15,7 +15,7 @@ pub const ServiceRuntimeAggregator = struct {
     options: AggregatorOptions,
     cached_states: ?[]driver_mod.RuntimeState = null,
     cache_timestamp: i64 = 0,
-    operation_locks: [registry.all.len]std.atomic.Value(bool) = [_]std.atomic.Value(bool){.init(false)} ** registry.all.len,
+    operation_locks: [registry.all.len]std.atomic.Value(bool) = @splat(.init(false)),
 
     pub fn init(allocator: std.mem.Allocator, io: std.Io, driver: driver_mod.LifecycleDriver, options: AggregatorOptions) ServiceRuntimeAggregator {
         return .{

@@ -1,7 +1,10 @@
 const std = @import("std");
 const toml = @import("toml.zig");
 pub const schema = @import("schema.zig");
+pub const defaults = @import("defaults.zig");
 pub const validate = @import("validate.zig");
+pub const render = @import("render.zig");
+pub const apply = @import("apply.zig");
 
 pub const Config = schema.Config;
 pub const Instance = schema.Instance;
@@ -196,6 +199,27 @@ pub fn configHash(allocator: Allocator, config: *const Config) ![]u8 {
         \\proxy.tls={s}
         \\proxy.custom_cert={?s}
         \\proxy.custom_key={?s}
+        \\
+    , .{
+        config.schema_version,
+        config.instance.name,
+        config.instance.domain,
+        config.instance.admin_email,
+        config.instance.timezone,
+        @tagName(config.database.mode),
+        config.database.max_connections,
+        config.database.url_file,
+        if (config.pooler.enabled) "true" else "false",
+        @tagName(config.pooler.pool_mode),
+        config.pooler.default_pool_size,
+        config.pooler.max_client_conn,
+        @tagName(config.proxy.mode),
+        @tagName(config.proxy.tls),
+        config.proxy.custom_cert,
+        config.proxy.custom_key,
+    });
+
+    try out.writer.print(
         \\services.auth={s}
         \\services.storage={s}
         \\services.pg_meta={s}
@@ -218,22 +242,6 @@ pub fn configHash(allocator: Allocator, config: *const Config) ![]u8 {
         \\security.default_rate_limit={s}
         \\
     , .{
-        config.schema_version,
-        config.instance.name,
-        config.instance.domain,
-        config.instance.admin_email,
-        config.instance.timezone,
-        @tagName(config.database.mode),
-        config.database.max_connections,
-        config.database.url_file,
-        if (config.pooler.enabled) "true" else "false",
-        @tagName(config.pooler.pool_mode),
-        config.pooler.default_pool_size,
-        config.pooler.max_client_conn,
-        @tagName(config.proxy.mode),
-        @tagName(config.proxy.tls),
-        config.proxy.custom_cert,
-        config.proxy.custom_key,
         if (config.services.auth) "true" else "false",
         if (config.services.storage) "true" else "false",
         if (config.services.pg_meta) "true" else "false",
@@ -308,4 +316,9 @@ test "parse full configuration from TOML" {
     var res = try validate.validate(std.testing.allocator, &config);
     defer res.deinit();
     try std.testing.expect(res.isValid());
+}
+
+test {
+    _ = render;
+    _ = apply;
 }

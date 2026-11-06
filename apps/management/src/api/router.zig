@@ -104,7 +104,7 @@ pub const ManagementApi = struct {
         try list_buf.writer.writeAll("{\"items\":[");
         for (states, 0..) |state, i| {
             if (i > 0) try list_buf.writer.writeAll(",");
-            try serializeServiceState(list_buf.writer, state);
+            try serializeServiceState(&list_buf.writer, state);
         }
         try list_buf.writer.writeAll("]}");
 
@@ -135,7 +135,7 @@ pub const ManagementApi = struct {
         var buf = std.Io.Writer.Allocating.init(self.allocator);
         defer buf.deinit();
 
-        try serializeServiceState(buf.writer, state);
+        try serializeServiceState(&buf.writer, state);
         const body = try self.allocator.dupe(u8, buf.written());
         return HttpResponse{ .status = 200, .body = body };
     }

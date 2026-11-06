@@ -1,0 +1,43 @@
+schema_version = 1
+
+[instance]
+name = "test-instance"
+domain = "test.local"
+admin_email = "admin@test.local"
+timezone = "UTC"
+
+[database]
+mode = "managed"
+max_connections = 100
+
+[pooler]
+enabled = true
+pool_mode = "transaction"
+default_pool_size = 20
+max_client_conn = 100
+
+[proxy]
+mode = "caddy"
+tls = "auto"
+
+[services]
+auth = true
+storage = true
+pg_meta = true
+rest = true
+realtime = true
+image_proxy = false
+
+[storage]
+backend = "local"
+max_upload = "50MB"
+
+[backup]
+enabled = true
+schedule = "03:00"
+retain_daily = 7
+retain_weekly = 4
+
+[logging]
+level = "info"
+format = "json"
