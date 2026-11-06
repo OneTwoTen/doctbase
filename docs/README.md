@@ -17,6 +17,7 @@ Tài liệu cho Doctbase V1, được tổ chức theo **Spec Kit**. Các artifa
 
 - [Nghiên cứu cài đặt & cấu hình dễ dàng](nghien-cuu-cai-dat-cau-hinh.md) — phân tích Supabase/Appwrite/PocketBase/Coolify/Dokploy, luồng cài native, mẫu cấu hình, backup/upgrade, test matrix, nguồn tham khảo.
 - [Core Runtime + Service Manager](runtime-service-manager.md) — trạng thái implementation, cách chạy gateway, endpoint và các slice tiếp theo.
+- [Phát triển, build và test](development.md) — build native, Docker toolchain (`deploy/dev`) và GitHub Actions CI.
 
 ## Quy ước
 

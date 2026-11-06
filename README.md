@@ -26,12 +26,25 @@ curl --unix-socket /tmp/doctbase-dev/gateway.sock \
 
 Test: `zig build test`. Chi tiết: [Core Runtime + Service Manager](docs/runtime-service-manager.md).
 
+### Build/test bằng Docker (không cần cài Zig)
+
+Toolchain Zig `0.17.1` nằm trong [`deploy/dev`](deploy/dev/compose.yml); repo được mount vào `/src`:
+
+```bash
+docker compose -f deploy/dev/compose.yml build
+docker compose -f deploy/dev/compose.yml run --rm toolchain zig build
+docker compose -f deploy/dev/compose.yml run --rm toolchain zig build test --summary all
+```
+
+Windows không build native được (runtime dùng POSIX signal + Unix domain socket) — dùng Docker hoặc WSL2. CI trên GitHub Actions tự chạy format/build/test cho mỗi push và pull request. Chi tiết: [Phát triển, build và test](docs/development.md).
+
 ## Bắt đầu đọc
 
 - [Constitution](.specify/memory/constitution.md) — nguyên tắc dự án.
 - [Feature 001 — Spec](specs/001-doctbase-install-config/spec.md) — cài đặt, cấu hình và vận hành dễ dàng.
 - [Feature 001 — Plan](specs/001-doctbase-install-config/plan.md) — kế hoạch kỹ thuật.
 - [Feature 001 — Tasks](specs/001-doctbase-install-config/tasks.md) — 165 task triển khai, gồm Core Runtime + Service Manager foundation.
+- [Phát triển, build và test](docs/development.md) — build native, Docker toolchain và CI.
 - [Docs index](docs/README.md) — toàn bộ tài liệu.
 - [Nghiên cứu chi tiết](docs/nghien-cuu-cai-dat-cau-hinh.md) — phân tích và quyết định thiết kế.
 

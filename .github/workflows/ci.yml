@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    name: Build & test (ubuntu-24.04, x86_64)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache Zig
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/zig
+            .zig-cache
+          key: zig-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.zigversion', 'build.zig.zon') }}
+          restore-keys: |
+            zig-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Install Zig
+        run: |
+          set -euo pipefail
+          version="$(tr -d '[:space:]' < .zigversion)"
+          arch="$(uname -m)"
+          tarball="zig-${arch}-linux-${version}.tar.xz"
+          url="https://ziglang.org/download/${version}/${tarball}"
+          echo "Installing Zig ${version} for ${arch}"
+          curl -fsSL "$url" -o "/tmp/${tarball}"
+          expected="$(curl -fsSL https://ziglang.org/download/index.json \
+            | jq -r --arg v "$version" --arg a "${arch}-linux" '.[$v][$a].shasum')"
+          echo "${expected}  /tmp/${tarball}" | sha256sum --check --status
+          sudo tar -xJf "/tmp/${tarball}" -C /opt
+          sudo ln -sf "/opt/zig-${arch}-linux-${version}/zig" /usr/local/bin/zig
+          zig version
+
+      - name: Check formatting
+        run: zig fmt --check build.zig apps packages tests
+
+      - name: Build
+        run: zig build --summary all
+
+      - name: Test
+        run: zig build test --summary all
+
+      - name: Cross-build (aarch64-linux)
+        run: zig build -Dtarget=aarch64-linux-gnu --summary all

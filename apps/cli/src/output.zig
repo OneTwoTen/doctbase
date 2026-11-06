@@ -59,10 +59,10 @@ pub fn printJsonError(
 }
 
 test "exit code values match contract" {
-    try std.testing.expectEqual(@as(u8, 0), @intFromEnum(ExitCode.success));
-    try std.testing.expectEqual(@as(u8, 1), @intFromEnum(ExitCode.general_error));
-    try std.testing.expectEqual(@as(u8, 2), @intFromEnum(ExitCode.cli_misuse));
-    try std.testing.expectEqual(@as(u8, 3), @intFromEnum(ExitCode.preflight_failed));
-    try std.testing.expectEqual(@as(u8, 6), @intFromEnum(ExitCode.service_failed));
-    try std.testing.expectEqual(@as(u8, 9), @intFromEnum(ExitCode.health_failed));
+    try std.testing.expectEqual(@as(u8, 0), @backingInt(ExitCode.success));
+    try std.testing.expectEqual(@as(u8, 1), @backingInt(ExitCode.general_error));
+    try std.testing.expectEqual(@as(u8, 2), @backingInt(ExitCode.cli_misuse));
+    try std.testing.expectEqual(@as(u8, 3), @backingInt(ExitCode.preflight_failed));
+    try std.testing.expectEqual(@as(u8, 6), @backingInt(ExitCode.service_failed));
+    try std.testing.expectEqual(@as(u8, 9), @backingInt(ExitCode.health_failed));
 }

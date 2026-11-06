@@ -1,0 +1,10 @@
+.git
+.gitignore
+.github
+.zig-cache
+zig-out
+zig-pkg
+deploy/dev/compose.yml
+docs
+specs
+dashboard/node_modules
