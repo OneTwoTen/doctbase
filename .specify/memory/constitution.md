@@ -27,7 +27,7 @@ Installation and configuration ease is a first-class feature, not documentation 
 - The golden path MUST be: one install command, one user-edited configuration file, one command per routine task, and one command to create a project.
 - A fresh supported VPS MUST reach a healthy installation in **5 minutes or less** (p95), and the first successful API request MUST be possible within **60 seconds** after installation completes.
 - The default configuration MUST work without mandatory manual edits. Domain and TLS email are optional; secrets MUST be generated automatically; no default password is permitted.
-- Users MUST edit exactly one configuration file: `/etc/doctbase/doctbase.toml`. Caddyfiles, PgBouncer configuration, systemd units, project snapshots, and key metadata are generated artifacts and MUST NOT require manual editing.
+- Users MUST edit exactly one configuration file: `/etc/doctbase/doctbase.toml`. Caddyfiles, PgBouncer configuration, systemd units, project snapshots, and key metadata are generated artifacts and MUST NOT require manual editing. In platform-managed Docker mode (e.g. Coolify), platform environment variables MAY be the configuration surface; the single configuration file MUST still be generated automatically from them and MUST NOT require manual editing.
 - Every new feature MUST pass the **installability budget**: no new mandatory configuration key without a default, no new public port outside Caddy's 80/443, no new mandatory service, and no new secret that lacks generation and rotation.
 - Installation and configuration operations MUST be idempotent, support `--dry-run`, fail before partial writes, and provide actionable error codes with a cause, a fix, and a documentation link.
 - Re-running installation or apply MUST NOT lose data or silently change unrelated state.
@@ -58,7 +58,7 @@ Tests MUST be written before or alongside implementation for every functional re
 - **Database**: PostgreSQL 18.x, with PgBouncer in transaction pooling mode. PostgreSQL extensions MUST be declared and tested.
 - **Edge proxy**: Caddy 2.x, with automatic HTTPS. Doctbase MUST NOT implement ACME or TLS termination itself.
 - **Native platforms**: Debian 13 and Ubuntu 24.04/26.04 LTS on x86_64 and arm64. Other platforms require an explicit support decision.
-- **Docker**: optional; Docker Compose v2; only Caddy publishes 80/443.
+- **Docker**: optional; Docker Compose v2; only Caddy publishes 80/443 in native mode. In the optional platform-managed Docker mode (e.g. Coolify), the platform proxy MAY own 80/443 and TLS, and the bundled Caddy MUST be disabled.
 - **Configuration**: TOML 1.0 for the instance configuration; project state lives in the control database; secrets live in files or systemd credentials.
 - **Internal protocol**: HTTP/1.1 and JSON over Unix domain sockets in native mode, private TCP in Docker mode; WebSocket for realtime.
 - **Process lifecycle**: systemd for native deployments and Docker Compose for Docker deployments. A custom production supervisor MUST NOT be introduced without a constitution amendment.
@@ -85,4 +85,8 @@ This constitution supersedes conflicting team practices, templates, and implemen
 - **Review**: At least one reviewer MUST verify compliance with Principles I, IV, V, and VII. Security-sensitive changes require a second reviewer with security responsibility.
 - **Runtime guidance**: `docs/` contains the architecture research, quickstart, configuration reference, upgrade, backup, and troubleshooting guidance. When guidance conflicts with this constitution, the constitution wins.
 
-**Version**: 1.0.0 | **Ratified**: 2026-11-06 | **Last Amended**: 2026-11-06
+## Amendments
+
+- **1.1.0 — 2026-11-06**: External managed proxy (e.g. Coolify/Traefik) MAY own ports 80/443 and TLS in the optional platform-managed Docker mode, with Caddy disabled; platform environment variables MAY be the configuration surface, provided the single configuration file is generated automatically. Native/systemd behavior is unchanged. See [amendment](../.specify/memory/amendments/2026-11-06-external-proxy-coolify.md).
+
+**Version**: 1.1.0 | **Ratified**: 2026-11-06 | **Last Amended**: 2026-11-06

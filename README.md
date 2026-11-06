@@ -38,6 +38,18 @@ docker compose -f deploy/dev/compose.yml run --rm toolchain zig build test --sum
 
 Windows không build native được (runtime dùng POSIX signal + Unix domain socket) — dùng Docker hoặc WSL2. CI trên GitHub Actions tự chạy format/build/test cho mỗi push và pull request. Chi tiết: [Phát triển, build và test](docs/development.md).
 
+### Cài trên Coolify (Docker Compose resource)
+
+Coolify chọn repo GitHub như một app bình thường, build pack **Docker Compose**, file `deploy/docker/compose.yml`. Một resource chứa nhiều container (gateway, management, database tùy chọn); proxy của Coolify giữ 80/443 và TLS.
+
+```bash
+# Kiểm tra compose locally trước khi deploy
+docker compose -f deploy/docker/compose.yml config -q
+docker compose -f deploy/docker/compose.yml --profile bundled config -q
+```
+
+Hướng dẫn từng bước: [Triển khai trên Coolify](docs/coolify.md).
+
 ## Bắt đầu đọc
 
 - [Constitution](.specify/memory/constitution.md) — nguyên tắc dự án.
@@ -45,6 +57,7 @@ Windows không build native được (runtime dùng POSIX signal + Unix domain s
 - [Feature 001 — Plan](specs/001-doctbase-install-config/plan.md) — kế hoạch kỹ thuật.
 - [Feature 001 — Tasks](specs/001-doctbase-install-config/tasks.md) — 165 task triển khai, gồm Core Runtime + Service Manager foundation.
 - [Phát triển, build và test](docs/development.md) — build native, Docker toolchain và CI.
+- [Triển khai trên Coolify](docs/coolify.md) — cài Doctbase như một Coolify resource (nhiều container, Traefik/TLS, database profile).
 - [Docs index](docs/README.md) — toàn bộ tài liệu.
 - [Nghiên cứu chi tiết](docs/nghien-cuu-cai-dat-cau-hinh.md) — phân tích và quyết định thiết kế.
 
