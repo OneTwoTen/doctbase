@@ -57,8 +57,8 @@
 - [x] T028 Cập nhật `.specify/memory/constitution.md` theo amendment 1.1.0 (external proxy + config surface) và ghi link amendment
 - [x] T029 Chạy `zig fmt --check`, `zig build`, `zig build test` (compile), `zig build -Dtarget=aarch64-linux-gnu`; test thực thi trên CI
 - [x] T030 Cập nhật `README.md`, `docs/README.md`, `docs/development.md`, `docs/runtime-service-manager.md`
-- [ ] T031 Chạy CI đầy đủ (2 job hiện có + job compose) và xác nhận xanh
-- [ ] T032 Mở PR stacked lên `ci/build-test-docker-dev`, link PR, ghi rõ giới hạn slice
+- [x] T031 Chạy CI đầy đủ (2 job hiện có + job compose) và xác nhận xanh
+- [x] T032 Mở PR stacked lên `ci/build-test-docker-dev`, link PR, ghi rõ giới hạn slice
 
 ## Dependencies
 
