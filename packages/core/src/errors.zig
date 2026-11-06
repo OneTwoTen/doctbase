@@ -1,0 +1,104 @@
+const std = @import("std");
+
+pub const Code = enum {
+    internal,
+    config_not_found,
+    config_invalid,
+    socket_bind_failed,
+    socket_in_use,
+    socket_permission_denied,
+    internal_auth_failed,
+    service_init_failed,
+    shutdown_timeout,
+    health_not_ready,
+    not_found,
+
+    pub fn httpStatus(self: Code) u16 {
+        return switch (self) {
+            .internal => 500,
+            .config_not_found, .not_found => 404,
+            .config_invalid => 422,
+            .socket_bind_failed, .socket_in_use, .socket_permission_denied => 503,
+            .internal_auth_failed => 401,
+            .service_init_failed, .shutdown_timeout, .health_not_ready => 503,
+        };
+    }
+
+    pub fn title(self: Code) []const u8 {
+        return switch (self) {
+            .internal => "Internal error",
+            .config_not_found => "Configuration file not found",
+            .config_invalid => "Invalid configuration",
+            .socket_bind_failed => "Cannot bind service socket",
+            .socket_in_use => "Service socket already in use",
+            .socket_permission_denied => "Service socket permission denied",
+            .internal_auth_failed => "Internal authentication failed",
+            .service_init_failed => "Service initialization failed",
+            .shutdown_timeout => "Graceful shutdown timed out",
+            .health_not_ready => "Service is not ready",
+            .not_found => "Not found",
+        };
+    }
+
+    pub fn fix(self: Code) []const u8 {
+        return switch (self) {
+            .internal => "Check the service log and retry",
+            .config_not_found => "Run `doctbase init` or pass --config <path>",
+            .config_invalid => "Run `doctbase config validate` and fix the reported key",
+            .socket_bind_failed => "Check the run directory owner/mode and retry",
+            .socket_in_use => "Stop the running service or choose a different socket",
+            .socket_permission_denied => "Verify the socket owner/group and mode 0660",
+            .internal_auth_failed => "Provide a valid internal bearer token",
+            .service_init_failed => "Check dependency readiness and the service log",
+            .shutdown_timeout => "Increase the shutdown deadline or inspect hung requests",
+            .health_not_ready => "Check /readyz dependency checks",
+            .not_found => "Check the request path",
+        };
+    }
+
+    pub fn codeString(self: Code) []const u8 {
+        return switch (self) {
+            .internal => "INTERNAL",
+            .config_not_found => "CONFIG_NOT_FOUND",
+            .config_invalid => "CONFIG_INVALID",
+            .socket_bind_failed => "SOCKET_BIND_FAILED",
+            .socket_in_use => "SOCKET_IN_USE",
+            .socket_permission_denied => "SOCKET_PERMISSION_DENIED",
+            .internal_auth_failed => "INTERNAL_AUTH_FAILED",
+            .service_init_failed => "SERVICE_INIT_FAILED",
+            .shutdown_timeout => "SHUTDOWN_TIMEOUT",
+            .health_not_ready => "HEALTH_NOT_READY",
+            .not_found => "NOT_FOUND",
+        };
+    }
+
+    pub fn docsUrl(self: Code, buffer: []u8) ![]const u8 {
+        return std.fmt.bufPrint(buffer, "https://doctbase.dev/errors/{s}", .{self.codeString()});
+    }
+};
+
+pub fn fromError(err: anyerror) Code {
+    return switch (err) {
+        error.ConfigNotFound => .config_not_found,
+        error.ConfigInvalid => .config_invalid,
+        error.SocketBindFailed => .socket_bind_failed,
+        error.SocketInUse => .socket_in_use,
+        error.SocketPermissionDenied => .socket_permission_denied,
+        error.InternalAuthFailed => .internal_auth_failed,
+        error.ServiceInitFailed => .service_init_failed,
+        error.ShutdownTimeout => .shutdown_timeout,
+        error.HealthNotReady => .health_not_ready,
+        error.FileNotFound => .not_found,
+        else => .internal,
+    };
+}
+
+test "error codes have stable HTTP status and docs URL" {
+    try std.testing.expectEqual(@as(u16, 401), Code.internal_auth_failed.httpStatus());
+    try std.testing.expectEqual(@as(u16, 503), Code.socket_in_use.httpStatus());
+    try std.testing.expectEqualStrings("INTERNAL_AUTH_FAILED", Code.internal_auth_failed.codeString());
+
+    var buffer: [128]u8 = undefined;
+    const url = try Code.not_found.docsUrl(&buffer);
+    try std.testing.expectEqualStrings("https://doctbase.dev/errors/NOT_FOUND", url);
+}

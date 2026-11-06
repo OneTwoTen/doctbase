@@ -1,0 +1,20 @@
+.{
+    .name = .doctbase,
+    .version = "0.1.0",
+    .fingerprint = 0x2fbf57a2f022a9ca,
+    .minimum_zig_version = "0.17.1",
+    .dependencies = .{
+        .httpz = .{
+            .url = "https://github.com/karlseguin/http.zig/archive/1bb71ff128a044b1645df91046473c38abbf965c.tar.gz",
+            .hash = "httpz-0.0.0-PNVzrFNMCQBySpfunggKlQQoD_FvF3yADlqg3xfbdX8p",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "apps",
+        "packages",
+        "tests",
+        ".zigversion",
+    },
+}

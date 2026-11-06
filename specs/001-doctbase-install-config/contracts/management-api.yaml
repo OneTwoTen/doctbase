@@ -1,0 +1,1401 @@
+openapi: 3.1.0
+info:
+  title: Doctbase Management API
+  version: 1.0.0-draft
+  description: |
+    Control-plane API cho Doctbase V1. Dashboard và CLI dùng API này để quản lý
+    instance, project, service, cấu hình, backup và upgrade.
+
+    Mọi response lỗi dùng `application/problem+json` (RFC 9457) kèm `code` và
+    `request_id`. Không có secret nào được trả lại sau thời điểm tạo một lần.
+servers:
+  - url: https://admin.example.com/api/v1
+    description: Production (admin host)
+  - url: http://127.0.0.1:8080/api/v1
+    description: Local/SSH tunnel
+tags:
+  - name: system
+    description: Health, setup, session
+  - name: projects
+    description: Project lifecycle
+  - name: services
+    description: Service status and lifecycle
+  - name: config
+    description: Instance configuration and apply
+  - name: backup
+    description: Backup and restore
+  - name: upgrade
+    description: Version upgrade
+  - name: observability
+    description: Logs, audit, doctor, support
+
+security:
+  - sessionCookie: []
+  - bearerAuth: []
+
+paths:
+  /health:
+    get:
+      tags: [system]
+      operationId: getHealth
+      security: []
+      summary: Instance health
+      responses:
+        "200":
+          description: Healthy or degraded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+        "503":
+          description: Unhealthy
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+
+  /setup/status:
+    get:
+      tags: [system]
+      operationId: getSetupStatus
+      security: []
+      summary: Whether initial admin setup is pending
+      responses:
+        "200":
+          description: Setup status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SetupStatus"
+
+  /setup:
+    post:
+      tags: [system]
+      operationId: completeSetup
+      security: []
+      summary: Create the initial admin user using a one-time setup token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetupRequest"
+      responses:
+        "201":
+          description: Admin created; session cookie set
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "400":
+          description: Invalid or expired setup token
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+
+  /auth/login:
+    post:
+      tags: [system]
+      operationId: login
+      security: []
+      summary: Admin login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Logged in; session cookie set
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "401":
+          description: Invalid credentials
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: Rate limited
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+
+  /auth/logout:
+    post:
+      tags: [system]
+      operationId: logout
+      summary: Revoke the current session
+      responses:
+        "204":
+          description: Logged out
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /auth/session:
+    get:
+      tags: [system]
+      operationId: getSession
+      summary: Current admin session
+      responses:
+        "200":
+          description: Session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /projects:
+    get:
+      tags: [projects]
+      operationId: listProjects
+      summary: List projects
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [provisioning, active, disabled, deleting, deleted, failed]
+      responses:
+        "200":
+          description: Project list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [projects]
+      operationId: createProject
+      summary: Create a project and provision its database, roles, keys and routes
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectCreate"
+      responses:
+        "201":
+          description: Project created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectCreated"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          description: Slug or domain already exists
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /projects/{slug}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectSlug"
+    get:
+      tags: [projects]
+      operationId: getProject
+      summary: Project details
+      responses:
+        "200":
+          description: Project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    patch:
+      tags: [projects]
+      operationId: updateProject
+      summary: Update project metadata and service toggles
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectUpdate"
+      responses:
+        "200":
+          description: Updated project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    delete:
+      tags: [projects]
+      operationId: deleteProject
+      summary: Disable a project; with purge=true, drop its database and storage
+      parameters:
+        - name: purge
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: backup
+          in: query
+          schema:
+            type: boolean
+            default: true
+      responses:
+        "202":
+          description: Deletion started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Operation"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /projects/{slug}/keys:
+    parameters:
+      - $ref: "#/components/parameters/ProjectSlug"
+    get:
+      tags: [projects]
+      operationId: listProjectKeys
+      summary: List API key metadata (never the secret value)
+      responses:
+        "200":
+          description: Key list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiKeyList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [projects]
+      operationId: createProjectKey
+      summary: Create a publishable or secret API key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApiKeyCreate"
+      responses:
+        "201":
+          description: Key created; secret value returned once
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiKeyCreated"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /projects/{slug}/keys/{keyId}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectSlug"
+      - name: keyId
+        in: path
+        required: true
+        schema:
+          type: string
+    delete:
+      tags: [projects]
+      operationId: revokeProjectKey
+      summary: Revoke an API key
+      responses:
+        "204":
+          description: Revoked
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /projects/{slug}/services:
+    parameters:
+      - $ref: "#/components/parameters/ProjectSlug"
+    get:
+      tags: [projects]
+      operationId: getProjectServices
+      summary: Service enablement for a project
+      responses:
+        "200":
+          description: Service list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectServiceList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    patch:
+      tags: [projects]
+      operationId: updateProjectServices
+      summary: Enable or disable project services
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectServiceUpdate"
+      responses:
+        "200":
+          description: Updated service list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectServiceList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /projects/{slug}/domains:
+    parameters:
+      - $ref: "#/components/parameters/ProjectSlug"
+    get:
+      tags: [projects]
+      operationId: listProjectDomains
+      summary: Domains attached to a project
+      responses:
+        "200":
+          description: Domain list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DomainList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [projects]
+      operationId: addProjectDomain
+      summary: Attach a custom domain and start DNS/TLS verification
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DomainCreate"
+      responses:
+        "201":
+          description: Domain added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Domain"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /projects/{slug}/domains/{host}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectSlug"
+      - name: host
+        in: path
+        required: true
+        schema:
+          type: string
+    delete:
+      tags: [projects]
+      operationId: removeProjectDomain
+      summary: Detach a custom domain and stop its route
+      responses:
+        "204":
+          description: Domain removed
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /services:
+    get:
+      tags: [services]
+      operationId: listServices
+      summary: Instance service status
+      responses:
+        "200":
+          description: Service list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServiceList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /services/{name}:
+    parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          enum: [gateway, management, auth, rest, realtime, storage, image-proxy, pg-meta, postgresql, pgbouncer, caddy]
+    get:
+      tags: [services]
+      operationId: getService
+      summary: Single service runtime status
+      responses:
+        "200":
+          description: Service state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServiceState"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /services/{name}/restart:
+    parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          enum: [gateway, management, auth, rest, realtime, storage, image-proxy, pg-meta]
+    post:
+      tags: [services]
+      operationId: restartService
+      summary: "Restart a single service (native: systemd; Docker: compose)"
+      responses:
+        "202":
+          description: Restart accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Operation"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /config:
+    get:
+      tags: [config]
+      operationId: getConfig
+      summary: Resolved instance configuration and drift status
+      responses:
+        "200":
+          description: Config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigView"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /config/apply:
+    post:
+      tags: [config]
+      operationId: applyConfig
+      summary: Render, validate and apply configuration
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfigApplyRequest"
+      responses:
+        "202":
+          description: Apply started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Operation"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /backups:
+    get:
+      tags: [backup]
+      operationId: listBackups
+      summary: List backups
+      responses:
+        "200":
+          description: Backup list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BackupList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [backup]
+      operationId: createBackup
+      summary: Create an instance or project backup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BackupCreate"
+      responses:
+        "202":
+          description: Backup started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Operation"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /backups/{backupId}/restore:
+    parameters:
+      - name: backupId
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      tags: [backup]
+      operationId: restoreBackup
+      summary: Restore a backup; requires explicit confirmation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RestoreRequest"
+      responses:
+        "202":
+          description: Restore started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Operation"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /upgrades:
+    get:
+      tags: [upgrade]
+      operationId: checkUpgrade
+      summary: Check available versions and preflight status
+      responses:
+        "200":
+          description: Upgrade status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpgradeStatus"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [upgrade]
+      operationId: startUpgrade
+      summary: Start upgrade to a target version
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpgradeRequest"
+      responses:
+        "202":
+          description: Upgrade started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Operation"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /operations/{operationId}:
+    parameters:
+      - name: operationId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      tags: [system]
+      operationId: getOperation
+      summary: Poll a long-running operation (install, apply, upgrade, restore, project create/delete)
+      responses:
+        "200":
+          description: Operation state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Operation"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /logs:
+    get:
+      tags: [observability]
+      operationId: getLogs
+      summary: Recent logs, optionally streamed
+      parameters:
+        - name: service
+          in: query
+          schema:
+            type: string
+        - name: since
+          in: query
+          schema:
+            type: string
+            example: 15m
+        - name: follow
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: Log entries or SSE stream
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogList"
+            text/event-stream:
+              schema:
+                type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /audit:
+    get:
+      tags: [observability]
+      operationId: listAuditEvents
+      summary: Audit log
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: Audit events
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditEventList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /doctor:
+    get:
+      tags: [observability]
+      operationId: runDoctor
+      summary: Run diagnostics
+      responses:
+        "200":
+          description: Diagnostic report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DoctorReport"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /support-bundle:
+    post:
+      tags: [observability]
+      operationId: createSupportBundle
+      summary: Create a redacted support bundle
+      responses:
+        "202":
+          description: Bundle creation started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Operation"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: doctbase_session
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: session-token
+    setupToken:
+      type: apiKey
+      in: header
+      name: X-Doctbase-Setup-Token
+
+  parameters:
+    ProjectSlug:
+      name: slug
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^[a-z][a-z0-9-]{2,30}$"
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+    Cursor:
+      name: cursor
+      in: query
+      schema:
+        type: string
+
+  responses:
+    Unauthorized:
+      description: Authentication required or invalid
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    BadRequest:
+      description: Invalid request
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    NotFound:
+      description: Resource not found
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    Forbidden:
+      description: Authenticated but not allowed
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    Conflict:
+      description: Operation already in progress or state conflict
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+
+  schemas:
+    Problem:
+      type: object
+      required: [type, title, status, code, request_id]
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+        code:
+          type: string
+          pattern: "^[A-Z][A-Z0-9_]+$"
+        request_id:
+          type: string
+        docs_url:
+          type: string
+          format: uri
+      additionalProperties: true
+
+    Health:
+      type: object
+      required: [status, version, services]
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+        version:
+          type: string
+        uptime_seconds:
+          type: integer
+        services:
+          type: array
+          items:
+            $ref: "#/components/schemas/ServiceState"
+        projects:
+          type: integer
+
+    SetupStatus:
+      type: object
+      required: [required]
+      properties:
+        required:
+          type: boolean
+        admin_domain:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+
+    SetupRequest:
+      type: object
+      required: [setup_token, email, password]
+      properties:
+        setup_token:
+          type: string
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 12
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+
+    Session:
+      type: object
+      required: [admin, expires_at]
+      properties:
+        admin:
+          $ref: "#/components/schemas/AdminUser"
+        expires_at:
+          type: string
+          format: date-time
+
+    AdminUser:
+      type: object
+      required: [id, email, role]
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [owner, admin, viewer]
+
+    ProjectCreate:
+      type: object
+      required: [slug, name, services]
+      properties:
+        slug:
+          type: string
+          pattern: "^[a-z][a-z0-9-]{2,30}$"
+        name:
+          type: string
+          maxLength: 100
+        domain:
+          type: string
+        services:
+          type: array
+          items:
+            type: string
+            enum: [auth, storage, pg_meta, rest, realtime, image_proxy]
+        allowed_origins:
+          type: array
+          items:
+            type: string
+            format: uri
+
+    ProjectUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 100
+        domain:
+          type: string
+        allowed_origins:
+          type: array
+          items:
+            type: string
+            format: uri
+        storage_quota_bytes:
+          type: integer
+          minimum: 0
+
+    Project:
+      type: object
+      required: [id, slug, name, status, services, created_at]
+      properties:
+        id:
+          type: string
+        slug:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+          enum: [provisioning, active, disabled, deleting, deleted, failed]
+        domain:
+          type: string
+        services:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectService"
+        allowed_origins:
+          type: array
+          items:
+            type: string
+        storage_quota_bytes:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ProjectCreated:
+      allOf:
+        - $ref: "#/components/schemas/Project"
+        - type: object
+          required: [publishable_key, secret_key]
+          properties:
+            publishable_key:
+              type: string
+            secret_key:
+              type: string
+              description: Returned once; never retrievable again.
+
+    ProjectList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Project"
+        next_cursor:
+          type: string
+
+    ProjectService:
+      type: object
+      required: [key, enabled]
+      properties:
+        key:
+          type: string
+          enum: [auth, storage, pg_meta, rest, realtime, image_proxy]
+        enabled:
+          type: boolean
+        health:
+          type: string
+          enum: [ok, warn, error, unknown]
+
+    ProjectServiceList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectService"
+
+    ProjectServiceUpdate:
+      type: object
+      required: [services]
+      properties:
+        services:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectService"
+
+    ApiKey:
+      type: object
+      required: [id, type, prefix, status, created_at]
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [publishable, secret]
+        prefix:
+          type: string
+        status:
+          type: string
+          enum: [active, retiring, revoked, expired]
+        created_at:
+          type: string
+          format: date-time
+        last_used_at:
+          type: string
+          format: date-time
+
+    ApiKeyCreate:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [publishable, secret]
+        scopes:
+          type: array
+          items:
+            type: string
+
+    ApiKeyCreated:
+      allOf:
+        - $ref: "#/components/schemas/ApiKey"
+        - type: object
+          required: [key]
+          properties:
+            key:
+              type: string
+              description: Returned once; never retrievable again.
+
+    ApiKeyList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ApiKey"
+
+    Domain:
+      type: object
+      required: [host, scope, status]
+      properties:
+        host:
+          type: string
+        scope:
+          type: string
+          enum: [instance, project]
+        status:
+          type: string
+          enum: [pending, verified, active, error, expired]
+        cert_expires_at:
+          type: string
+          format: date-time
+        last_checked_at:
+          type: string
+          format: date-time
+
+    DomainCreate:
+      type: object
+      required: [host]
+      properties:
+        host:
+          type: string
+
+    DomainList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Domain"
+
+    ServiceState:
+      type: object
+      required: [name, state, health, version, source, optional]
+      properties:
+        name:
+          type: string
+        state:
+          type: string
+          enum: [starting, running, ready, degraded, stopping, stopped, failed]
+        health:
+          type: string
+          enum: [ok, warn, error, unknown]
+        version:
+          type: string
+        endpoint:
+          type: string
+        uptime_seconds:
+          type: integer
+        config_hash:
+          type: string
+        source:
+          type: string
+          enum: [systemd, compose, dev, fake]
+        optional:
+          type: boolean
+        unit:
+          type: string
+        last_error:
+          type: string
+        operation_id:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        last_check_at:
+          type: string
+          format: date-time
+
+    ServiceList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ServiceState"
+
+    ConfigView:
+      type: object
+      required: [schema_version, resolved, drift]
+      properties:
+        schema_version:
+          type: integer
+        resolved:
+          type: object
+          additionalProperties: true
+        drift:
+          type: boolean
+        drift_files:
+          type: array
+          items:
+            type: string
+
+    ConfigApplyRequest:
+      type: object
+      properties:
+        dry_run:
+          type: boolean
+          default: false
+        reason:
+          type: string
+
+    Backup:
+      type: object
+      required: [id, scope, status, created_at]
+      properties:
+        id:
+          type: string
+        scope:
+          type: string
+          enum: [instance, project]
+        project_slug:
+          type: string
+        status:
+          type: string
+          enum: [creating, complete, verified, failed]
+        size_bytes:
+          type: integer
+        checksum:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+
+    BackupCreate:
+      type: object
+      required: [scope]
+      properties:
+        scope:
+          type: string
+          enum: [instance, project]
+        project_slug:
+          type: string
+        include_secrets:
+          type: boolean
+          default: false
+        encrypt:
+          type: boolean
+          default: false
+
+    BackupList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Backup"
+
+    RestoreRequest:
+      type: object
+      required: [confirm]
+      properties:
+        confirm:
+          type: string
+          description: Must equal the instance or project slug.
+        project_slug:
+          type: string
+
+    UpgradeStatus:
+      type: object
+      required: [current_version]
+      properties:
+        current_version:
+          type: string
+        latest_version:
+          type: string
+        update_available:
+          type: boolean
+        release_notes_url:
+          type: string
+        preflight_ok:
+          type: boolean
+        blockers:
+          type: array
+          items:
+            type: string
+
+    UpgradeRequest:
+      type: object
+      required: [version]
+      properties:
+        version:
+          type: string
+        major:
+          type: boolean
+          default: false
+
+    Operation:
+      type: object
+      required: [id, type, status, started_at]
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [install, apply, upgrade, restore, backup, project_create, project_delete]
+        status:
+          type: string
+          enum: [pending, running, succeeded, failed, rolled_back, cancelled]
+        target:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+        error_code:
+          type: string
+        log_ref:
+          type: string
+        rollback_ref:
+          type: string
+
+    LogEntry:
+      type: object
+      required: [timestamp, service, level, message]
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        service:
+          type: string
+        level:
+          type: string
+          enum: [debug, info, warn, error]
+        request_id:
+          type: string
+        project_slug:
+          type: string
+        message:
+          type: string
+
+    LogList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/LogEntry"
+
+    AuditEvent:
+      type: object
+      required: [id, action, actor_type, created_at]
+      properties:
+        id:
+          type: string
+        actor_type:
+          type: string
+          enum: [admin, system, cli]
+        actor_id:
+          type: string
+        action:
+          type: string
+        target_type:
+          type: string
+        target_id:
+          type: string
+        request_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    AuditEventList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditEvent"
+        next_cursor:
+          type: string
+
+    DoctorReport:
+      type: object
+      required: [ok, checks]
+      properties:
+        ok:
+          type: boolean
+        checks:
+          type: array
+          items:
+            type: object
+            required: [name, status, message]
+            properties:
+              name:
+                type: string
+              status:
+                type: string
+                enum: [pass, warn, fail]
+              message:
+                type: string
+              fix:
+                type: string
+              docs_url:
+                type: string
