@@ -158,8 +158,8 @@ test "memory and disk parsers convert Linux kilobytes to bytes" {
     try std.testing.expectEqual(@as(?u64, 2 * gib), preflight.parseMemTotal(
         "MemFree:         120000 kB\nMemTotal:       2097152 kB\n",
     ));
-    try std.testing.expectEqual(@as(?u64, 20 * gib), preflight.parseDfAvailable("Avail\n20971520\n"));
-    try std.testing.expectEqual(@as(?u64, null), preflight.parseDfAvailable("Avail\nunknown\n"));
+    try std.testing.expectEqual(@as(?u64, 20 * gib), preflight.parseDfAvailable("Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/sda1 41943040 1000 20971520 1% /\n"));
+    try std.testing.expectEqual(@as(?u64, null), preflight.parseDfAvailable("Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/sda1 41943040 1000 unknown 1% /\n"));
 }
 
 test "proc tcp parser reports only listeners and marks validated owned ports" {

@@ -111,9 +111,9 @@ Monorepo theo [plan.md](./plan.md): `apps/`, `packages/`, `dashboard/`, `infrast
 ### Tests for User Story 1
 
 - [x] T036 [P] [US1] Unit test preflight (OS, RAM, disk, ports, DNS, existing services) in `tests/unit/preflight_test.zig`
-- [ ] T037 [P] [US1] Integration test install idempotency (3 lần chạy) in `tests/integration/install_idempotency_test.zig`
+- [x] T037 [P] [US1] Integration test install idempotency (3 lần chạy) in `tests/integration/install_idempotency_test.zig`
 - [ ] T038 [P] [US1] E2E test fresh Ubuntu install in `tests/e2e/install-ubuntu.sh`
-- [ ] T039 [P] [US1] Security test no default secrets, no public DB/admin ports in `tests/security/install_defaults_test.zig`
+- [x] T039 [P] [US1] Security test no default secrets, no public DB/admin ports in `tests/security/install_defaults_test.zig`
 
 ### Implementation for User Story 1
 
@@ -126,10 +126,10 @@ Monorepo theo [plan.md](./plan.md): `apps/`, `packages/`, `dashboard/`, `infrast
 - [x] T046 [US1] Render and install PgBouncer UDS config/unit in `apps/cli/src/install/pgbouncer.zig`, `deploy/native/units/doctbase-pgbouncer.service.tmpl`
 - [x] T047 [US1] Render and install Caddy config/unit (UDS admin, auto TLS, per-host sites) in `apps/cli/src/install/caddy.zig`, `deploy/native/units/doctbase-caddy.service.tmpl`
 - [x] T048 [US1] Create systemd unit templates/target and polkit allowlist in `deploy/native/units/doctbase-*.service.tmpl`, `deploy/native/polkit/50-doctbase.rules`
-- [ ] T049 [US1] Implement install orchestration, state file, lock and rollback in `apps/cli/src/install/install.zig`, `apps/cli/src/install/state.zig`
+- [x] T049 [US1] Implement install orchestration, state file, lock and rollback in `apps/cli/src/install/install.zig`, `apps/cli/src/install/state.zig`
 - [ ] T050 [US1] Implement admin bootstrap and one-time setup token in `apps/cli/src/install/bootstrap.zig`, `apps/management/src/api/setup.zig`
-- [ ] T051 [US1] Implement post-install health verification and rollback in `apps/cli/src/install/health.zig`
-- [ ] T052 [US1] Implement install summary, log file and support hints in `apps/cli/src/install/summary.zig`
+- [x] T051 [US1] Implement post-install health verification and rollback in `apps/cli/src/install/health.zig`
+- [x] T052 [US1] Implement install summary, log file and support hints in `apps/cli/src/install/summary.zig`
 - [ ] T053 [US1] Implement one-line signed bootstrap installer and audited two-step variant in `deploy/native/install.sh`, `tools/manifest.zig`
 - [ ] T054 [US1] Implement uninstall `--keep-data`/`--purge` in `apps/cli/src/commands/uninstall.zig`
 - [ ] T055 [US1] Implement repair/reinstall without data loss in `apps/cli/src/install/repair.zig`

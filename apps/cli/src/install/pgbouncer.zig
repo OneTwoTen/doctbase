@@ -166,6 +166,33 @@ pub fn validUnixSocketPath(path: []const u8) bool {
     return true;
 }
 
+/// Render the `auth_file` entry PgBouncer uses to connect for `auth_query`.
+/// PgBouncer runs the auth query as `auth_user`, so that account must exist in
+/// the userlist even when every other password is resolved from the database.
+/// Plain values are quoted and escaped; the file is written `0600` by the
+/// caller and never logged.
+pub fn renderAuthFile(allocator: std.mem.Allocator, user: []const u8, password: []const u8) ![]u8 {
+    if (user.len == 0 or password.len == 0) return error.InvalidSecret;
+    if (!validIdentifier(user)) return error.InvalidAuthUser;
+
+    var output = std.Io.Writer.Allocating.init(allocator);
+    defer output.deinit();
+
+    try output.writer.writeByte('"');
+    for (user) |byte| {
+        if (byte == '"' or byte == '\\') try output.writer.writeByte('\\');
+        try output.writer.writeByte(byte);
+    }
+    try output.writer.writeAll("\" \"");
+    for (password) |byte| {
+        if (byte == '"' or byte == '\\') try output.writer.writeByte('\\');
+        try output.writer.writeByte(byte);
+    }
+    try output.writer.writeAll("\"\n");
+
+    return try allocator.dupe(u8, output.written());
+}
+
 comptime {
     if (listen_port == 5432) @compileError("PgBouncer must not reuse the PostgreSQL port");
     if (!validUnixSocketPath(unix_socket_directory)) @compileError("invalid PgBouncer socket directory");

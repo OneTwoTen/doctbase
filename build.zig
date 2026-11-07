@@ -120,6 +120,69 @@ pub fn build(b: *std.Build) !void {
         },
     });
 
+    const install_state_mod = b.addModule("install_state", .{
+        .root_source_file = b.path("apps/cli/src/install/state.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const install_config_mod = b.addModule("install_config", .{
+        .root_source_file = b.path("apps/cli/src/install/config_file.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const install_health_mod = b.addModule("install_health", .{
+        .root_source_file = b.path("apps/cli/src/install/health.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "service_lifecycle", .module = lifecycle_mod },
+        },
+    });
+
+    const install_orchestrator_mod = b.addModule("install_orchestrator", .{
+        .root_source_file = b.path("apps/cli/src/install/install.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "preflight", .module = preflight_mod },
+            .{ .name = "install_caddy", .module = install_caddy_mod },
+            .{ .name = "install_state", .module = install_state_mod },
+        },
+    });
+
+    const install_host_mod = b.addModule("install_host", .{
+        .root_source_file = b.path("apps/cli/src/install/host.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "install_orchestrator", .module = install_orchestrator_mod },
+            .{ .name = "install_state", .module = install_state_mod },
+            .{ .name = "install_config", .module = install_config_mod },
+            .{ .name = "install_health", .module = install_health_mod },
+            .{ .name = "preflight", .module = preflight_mod },
+            .{ .name = "install_packages", .module = install_packages_mod },
+            .{ .name = "install_users", .module = install_users_mod },
+            .{ .name = "install_secrets", .module = install_secrets_mod },
+            .{ .name = "install_postgres", .module = install_postgres_mod },
+            .{ .name = "install_pgbouncer", .module = install_pgbouncer_mod },
+            .{ .name = "install_caddy", .module = install_caddy_mod },
+            .{ .name = "install_units", .module = install_units_mod },
+            .{ .name = "service_lifecycle", .module = lifecycle_mod },
+        },
+    });
+
+    const install_summary_mod = b.addModule("install_summary", .{
+        .root_source_file = b.path("apps/cli/src/install/summary.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "install_orchestrator", .module = install_orchestrator_mod },
+            .{ .name = "preflight", .module = preflight_mod },
+        },
+    });
+
     const gateway = b.addExecutable(.{
         .name = "doctbase-gateway",
         .root_module = b.createModule(.{
@@ -235,6 +298,9 @@ pub fn build(b: *std.Build) !void {
             .imports = &.{
                 .{ .name = "service_lifecycle", .module = lifecycle_mod },
                 .{ .name = "config", .module = config_mod },
+                .{ .name = "install_orchestrator", .module = install_orchestrator_mod },
+                .{ .name = "install_host", .module = install_host_mod },
+                .{ .name = "install_summary", .module = install_summary_mod },
             },
         }),
     });
@@ -369,7 +435,75 @@ pub fn build(b: *std.Build) !void {
     const install_units_test_step = b.step("test-install-units", "Run systemd unit and polkit rendering unit tests");
     install_units_test_step.dependOn(&run_install_units_tests.step);
 
-    inline for (.{ core_mod, config_mod, protocol_mod, runtime_mod, lifecycle_mod, postgres_mod, telemetry_mod, http_mod, security_mod }) |module| {
+    const install_orchestration_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/integration/install_idempotency_test.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "install_orchestrator", .module = install_orchestrator_mod },
+                .{ .name = "install_state", .module = install_state_mod },
+                .{ .name = "preflight", .module = preflight_mod },
+            },
+        }),
+    });
+    const run_install_orchestration_tests = b.addRunArtifact(install_orchestration_tests);
+    test_step.dependOn(&run_install_orchestration_tests.step);
+    const install_orchestration_test_step = b.step("test-install-orchestration", "Run install orchestration, state and rollback tests");
+    install_orchestration_test_step.dependOn(&run_install_orchestration_tests.step);
+
+    const install_defaults_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/security/install_defaults_test.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "install_secrets", .module = install_secrets_mod },
+                .{ .name = "install_postgres", .module = install_postgres_mod },
+                .{ .name = "install_pgbouncer", .module = install_pgbouncer_mod },
+                .{ .name = "install_caddy", .module = install_caddy_mod },
+                .{ .name = "install_config", .module = install_config_mod },
+                .{ .name = "install_state", .module = install_state_mod },
+            },
+        }),
+    });
+    const run_install_defaults_tests = b.addRunArtifact(install_defaults_tests);
+    test_step.dependOn(&run_install_defaults_tests.step);
+    const install_defaults_test_step = b.step("test-install-defaults", "Run installer security defaults tests");
+    install_defaults_test_step.dependOn(&run_install_defaults_tests.step);
+
+    const install_health_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/unit/install_health_test.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "install_health", .module = install_health_mod },
+            },
+        }),
+    });
+    const run_install_health_tests = b.addRunArtifact(install_health_tests);
+    test_step.dependOn(&run_install_health_tests.step);
+    const install_health_test_step = b.step("test-install-health", "Run post-install health verification tests");
+    install_health_test_step.dependOn(&run_install_health_tests.step);
+
+    const install_config_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/unit/install_config_test.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "install_config", .module = install_config_mod },
+                .{ .name = "config", .module = config_mod },
+            },
+        }),
+    });
+    const run_install_config_tests = b.addRunArtifact(install_config_tests);
+    test_step.dependOn(&run_install_config_tests.step);
+    const install_config_test_step = b.step("test-install-config", "Run generated configuration tests");
+    install_config_test_step.dependOn(&run_install_config_tests.step);
+
+    inline for (.{ core_mod, config_mod, protocol_mod, runtime_mod, lifecycle_mod, postgres_mod, telemetry_mod, http_mod, security_mod, install_state_mod }) |module| {
         const tests = b.addTest(.{ .root_module = module });
         const run_tests = b.addRunArtifact(tests);
         test_step.dependOn(&run_tests.step);

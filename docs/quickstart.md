@@ -1,5 +1,16 @@
 # Quickstart
 
+## Cài native
+
+Luồng cài production native (Debian 13 / Ubuntu 24.04/26.04) đã có
+`doctbase install`. Xem [Install](install.md) để biết điều kiện, `--dry-run`,
+cách chạy, rollback và giới hạn của slice hiện tại.
+
+```sh
+sudo doctbase install --domain example.com --email admin@example.com --dry-run
+sudo doctbase install --domain example.com --email admin@example.com --yes
+```
+
 ## Current development workflow
 
 The production native installer is still under implementation. To build and

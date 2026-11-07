@@ -157,7 +157,7 @@ pub fn validHost(host: []const u8) bool {
     return label_length != 0 and previous != '-';
 }
 
-fn validEmail(email: []const u8) bool {
+pub fn validEmail(email: []const u8) bool {
     if (email.len == 0 or email.len > 254) return false;
     const at = std.mem.indexOfScalar(u8, email, '@') orelse return false;
     if (at == 0 or at + 1 == email.len) return false;

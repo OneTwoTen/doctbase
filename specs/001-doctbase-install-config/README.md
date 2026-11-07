@@ -35,6 +35,7 @@
 - Core Runtime + Service Manager đã được bổ sung vào research/plan/tasks (2026-11-06): shared runtime library, lifecycle adapter systemd/Compose, registry/probe/cache/restart operation.
 - MVP = US1 + US2 (cài native + tạo project/API đầu tiên), sau Phase 2B.
 - Implementation đã bắt đầu: Core Runtime + Service Manager Slice 2 (`packages/runtime`, `packages/service-lifecycle`, gateway/auth, `doctbase dev/status/restart`); xem [docs/runtime-service-manager.md](../../docs/runtime-service-manager.md).
+- Native install orchestration (US1 T049/T051/T052) đã có: `doctbase install` chạy preflight → package → user/dir → secret → PostgreSQL → PgBouncer → Caddy → config → binary → unit → service → health, với state file, lock, rollback và summary; xem [docs/install.md](../../docs/install.md).
 
 ## Source of truth
 
