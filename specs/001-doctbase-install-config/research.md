@@ -150,6 +150,19 @@ doctbase backup | restore | upgrade | support | uninstall
 - **React SPA**: khả thi; SvelteKit nhỏ hơn, phù hợp dashboard.
 - **Server-rendered Zig templates**: ít JS nhưng DX/component ecosystem kém.
 
+**Management auth — quyết định chốt**:
+
+- Phiên admin dùng cookie `doctbase_session`: `HttpOnly; Secure; SameSite=Lax; Path=/`, TTL mặc định 24h. Token là opaque 256-bit; store chỉ giữ SHA-256 hash (`admin_sessions.token_hash`), không giữ plaintext.
+- CSRF dùng double-submit: cookie `doctbase_csrf` (JavaScript đọc được) + header `X-CSRF-Token`. Server giữ `csrf_secret_hash` và so sánh constant-time. Mọi method không an toàn (POST/PUT/PATCH/DELETE) xác thực bằng cookie MUST có CSRF hợp lệ; Bearer internal token dành cho CLI/service được miễn vì không phải ambient credential.
+- Dashboard dùng `credentials: same-origin`, không lưu session token/JWT trong `localStorage`/`sessionStorage`.
+- Login trả cùng một lỗi `INVALID_CREDENTIALS` cho email không tồn tại và sai mật khẩu; rate limit/IP allowlist cho login vẫn thuộc FR-027 (T134/T162).
+- Session/CSRF secret chỉ trả một lần khi login; CSRF được mirror qua cookie để SPA khôi phục sau reload.
+
+**Alternatives considered**:
+- **JWT trong `localStorage`**: dễ bị XSS đánh cắp; loại bỏ.
+- **Bearer token cho dashboard**: không có ambient credential nên không cần CSRF, nhưng buộc JS giữ token; loại bỏ.
+- **Chỉ cookie session không CSRF**: SameSite=Lax giảm rủi ro nhưng không đủ cho state-changing request; loại bỏ.
+
 ## 9. Secrets and key ownership
 
 **Decision**: Secrets sinh tự động; native dùng systemd credentials; Docker dùng Compose secrets. JWT private keys do auth service sở hữu tại `/var/lib/doctbase/auth/keys`; management chỉ nhận public key/JWKS.

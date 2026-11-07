@@ -26,31 +26,61 @@ export interface ServicesResponse {
   items: ServiceRuntimeState[];
 }
 
+export type UserRole = 'owner' | 'admin' | 'viewer';
+
+export interface AdminUser {
+  id: string;
+  email: string;
+  role: UserRole;
+}
+
+export interface SessionResponse {
+  admin: AdminUser;
+  expires_at: number;
+}
+
+export type LoginResponse = SessionResponse;
+
+const CSRF_COOKIE = 'doctbase_csrf';
+
+function readCookie(name: string): string | null {
+  const prefix = `${name}=`;
+  for (const part of document.cookie.split(';')) {
+    const value = part.trim();
+    if (value.startsWith(prefix)) {
+      return decodeURIComponent(value.slice(prefix.length));
+    }
+  }
+  return null;
+}
+
 export class ApiClient {
   private baseUrl: string;
-  private token: string | null = null;
 
   constructor(baseUrl: string = '/api/v1') {
     this.baseUrl = baseUrl;
   }
 
-  setToken(token: string | null) {
-    this.token = token;
+  private csrf(): string | null {
+    return readCookie(CSRF_COOKIE);
   }
 
   private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
+    const method = (options.method ?? 'GET').toUpperCase();
     const headers: Record<string, string> = {
       'Accept': 'application/json',
       'Content-Type': 'application/json',
       ...(options.headers as Record<string, string> || {}),
     };
 
-    if (this.token) {
-      headers['Authorization'] = `Bearer ${this.token}`;
+    if (method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS') {
+      const csrfToken = this.csrf();
+      if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
     }
 
     const response = await fetch(`${this.baseUrl}${path}`, {
       ...options,
+      credentials: 'same-origin',
       headers,
     });
 
@@ -64,7 +94,23 @@ export class ApiClient {
       throw errorJson;
     }
 
+    if (response.status === 204) return undefined as T;
     return response.json();
+  }
+
+  async login(email: string, password: string): Promise<LoginResponse> {
+    return this.request<LoginResponse>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
+  }
+
+  async logout(): Promise<void> {
+    await this.request<void>('/auth/logout', { method: 'POST' });
+  }
+
+  async getSession(): Promise<SessionResponse> {
+    return this.request<SessionResponse>('/auth/session');
   }
 
   async getServices(): Promise<ServicesResponse> {

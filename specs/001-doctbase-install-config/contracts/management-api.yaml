@@ -8,6 +8,14 @@ info:
 
     Mọi response lỗi dùng `application/problem+json` (RFC 9457) kèm `code` và
     `request_id`. Không có secret nào được trả lại sau thời điểm tạo một lần.
+
+    Xác thực dashboard dùng cookie phiên `doctbase_session` (`HttpOnly`,
+    `Secure`, `SameSite=Lax`, TTL 24h) và CSRF double-submit: cookie
+    `doctbase_csrf` (JavaScript đọc được) phải được mirror vào header
+    `X-CSRF-Token` cho mọi method không an toàn (POST/PUT/PATCH/DELETE) khi
+    xác thực bằng cookie. Bearer token chỉ dành cho CLI/service và được miễn
+    CSRF. Server chỉ lưu hash của session token và CSRF secret; không lưu
+    token/JWT trong `localStorage`/`sessionStorage`.
 servers:
   - url: https://admin.example.com/api/v1
     description: Production (admin host)
@@ -112,11 +120,22 @@ paths:
               $ref: "#/components/schemas/LoginRequest"
       responses:
         "200":
-          description: Logged in; session cookie set
+          description: Logged in; HttpOnly session cookie and readable CSRF cookie set
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+              description: "`doctbase_session` (HttpOnly) and `doctbase_csrf` (readable)."
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Session"
+        "400":
+          description: Malformed JSON or non-JSON content type
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
         "401":
           description: Invalid credentials
           content:
@@ -135,11 +154,19 @@ paths:
       tags: [system]
       operationId: logout
       summary: Revoke the current session
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
       responses:
         "204":
-          description: Logged out
+          description: Logged out; both auth cookies cleared
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
 
   /auth/session:
     get:
@@ -477,6 +504,7 @@ paths:
         schema:
           type: string
           enum: [gateway, management, auth, rest, realtime, storage, image-proxy, pg-meta]
+      - $ref: "#/components/parameters/CsrfToken"
     post:
       tags: [services]
       operationId: restartService
@@ -752,6 +780,7 @@ components:
       type: http
       scheme: bearer
       bearerFormat: session-token
+      description: Internal token for CLI/service callers; exempt from CSRF.
     setupToken:
       type: apiKey
       in: header
@@ -778,6 +807,15 @@ components:
       in: query
       schema:
         type: string
+    CsrfToken:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      schema:
+        type: string
+      description: |
+        Must mirror the `doctbase_csrf` cookie for unsafe requests authenticated
+        with `sessionCookie`. Bearer-authenticated CLI/service calls are exempt.
 
   responses:
     Unauthorized:
@@ -897,8 +935,9 @@ components:
         admin:
           $ref: "#/components/schemas/AdminUser"
         expires_at:
-          type: string
-          format: date-time
+          type: integer
+          format: int64
+          description: Session expiry as Unix seconds (UTC).
 
     AdminUser:
       type: object
