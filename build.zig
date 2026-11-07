@@ -115,6 +115,7 @@ pub fn build(b: *std.Build) !void {
             .imports = &.{
                 .{ .name = "runtime", .module = runtime_mod },
                 .{ .name = "service_lifecycle", .module = lifecycle_mod },
+                .{ .name = "security", .module = security_mod },
             },
         }),
     });
@@ -329,6 +330,7 @@ pub fn build(b: *std.Build) !void {
                 .{ .name = "service_lifecycle", .module = lifecycle_mod },
                 .{ .name = "service_protocol", .module = protocol_mod },
                 .{ .name = "core", .module = core_mod },
+                .{ .name = "security", .module = security_mod },
             },
         }),
     });

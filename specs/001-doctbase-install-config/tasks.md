@@ -66,7 +66,7 @@ Monorepo theo [plan.md](./plan.md): `apps/`, `packages/`, `dashboard/`, `infrast
 - [x] T027 Implement PostgreSQL pool, migration runner and RLS helpers in `packages/postgres/src/pool.zig`, `packages/postgres/src/migrate.zig`, `packages/postgres/src/rls.zig`
 - [x] T028 Implement secret generation, Argon2id password hashing, ULID IDs and constant-time compare in `packages/security/src/secrets.zig`, `packages/security/src/password.zig`, `packages/security/src/ids.zig`
 - [x] T029 Implement render pipeline skeleton (staging, atomic write, diff, rollback) in `packages/config/src/render.zig`, `packages/config/src/apply.zig`
-- [x] T030 Implement Management API skeleton and session middleware in `apps/management/src/main.zig`, `apps/management/src/api/router.zig`, `apps/management/src/auth/session.zig`
+- [x] T030 Implement Management API skeleton and cookie+CSRF session middleware in `apps/management/src/main.zig`, `apps/management/src/api/router.zig`, `apps/management/src/auth/session.zig`, `apps/management/src/auth/users.zig`
 - [x] T031 Implement gateway skeleton with project registry loader, host/path routing and upstream proxying in `apps/gateway/src/main.zig`, `apps/gateway/src/project_registry.zig`, `apps/gateway/src/router.zig`
 - [x] T032 Implement auth service skeleton and internal key API stub in `apps/auth/src/main.zig`, `apps/auth/src/keys.zig`
 - [x] T033 Implement dashboard shell, API client and auth store in `dashboard/src/lib/api.ts`, `dashboard/src/lib/auth.ts`, `dashboard/src/routes/+page.svelte`

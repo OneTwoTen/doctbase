@@ -1,31 +1,49 @@
 import { writable } from 'svelte/store';
-import { api } from './api';
+import { api, type SessionResponse, type UserRole } from './api';
 
-export type UserRole = 'owner' | 'admin' | 'developer' | 'viewer';
+export type { UserRole };
 
 export interface UserSession {
-  id: string;
   userId: string;
+  email: string | null;
   role: UserRole;
-  token: string;
   expiresAt: number;
 }
 
+function toSession(response: SessionResponse): UserSession {
+  return {
+    userId: response.admin.id,
+    email: response.admin.email,
+    role: response.admin.role,
+    expiresAt: response.expires_at,
+  };
+}
+
 function createAuthStore() {
-  const { subscribe, set, update } = writable<UserSession | null>(null);
+  const { subscribe, set } = writable<UserSession | null>(null);
 
   return {
     subscribe,
-    login(session: UserSession) {
-      api.setToken(session.token);
-      set(session);
+    async login(email: string, password: string) {
+      const response = await api.login(email, password);
+      set(toSession(response));
     },
-    logout() {
-      api.setToken(null);
+    async logout() {
+      try {
+        await api.logout();
+      } finally {
+        set(null);
+      }
+    },
+    async restore() {
+      try {
+        set(toSession(await api.getSession()));
+      } catch {
+        set(null);
+      }
+    },
+    clear() {
       set(null);
-    },
-    setRole(role: UserRole) {
-      update((s) => s ? { ...s, role } : null);
     },
   };
 }

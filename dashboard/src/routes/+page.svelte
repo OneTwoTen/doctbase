@@ -7,6 +7,11 @@
   let loading = true;
   let errorMessage: string | null = null;
 
+  let email = '';
+  let password = '';
+  let loginError: string | null = null;
+  let loggingIn = false;
+
   async function loadServices() {
     loading = true;
     errorMessage = null;
@@ -29,8 +34,34 @@
     }
   }
 
-  onMount(() => {
-    loadServices();
+  async function handleLogin(event: SubmitEvent) {
+    event.preventDefault();
+    loggingIn = true;
+    loginError = null;
+    try {
+      await auth.login(email, password);
+      password = '';
+      await loadServices();
+    } catch (err: any) {
+      loginError = err.detail || err.title || 'Login failed';
+    } finally {
+      loggingIn = false;
+    }
+  }
+
+  async function handleLogout() {
+    await auth.logout();
+    services = [];
+    loading = false;
+  }
+
+  onMount(async () => {
+    await auth.restore();
+    if ($auth) {
+      await loadServices();
+    } else {
+      loading = false;
+    }
   });
 </script>
 
@@ -39,42 +70,63 @@
     <h1>Doctbase Dashboard</h1>
     {#if $auth}
       <span class="badge">{$auth.role}</span>
+      <button class="secondary" on:click={handleLogout}>Log out</button>
     {/if}
   </header>
 
-  {#if errorMessage}
-    <div class="alert error">
-      {errorMessage}
-    </div>
-  {/if}
-
-  {#if loading}
-    <p>Loading services...</p>
+  {#if !$auth}
+    <form class="login" on:submit={handleLogin}>
+      <h2>Sign in</h2>
+      {#if loginError}
+        <div class="alert error">{loginError}</div>
+      {/if}
+      <label>
+        Email
+        <input type="email" bind:value={email} autocomplete="username" required />
+      </label>
+      <label>
+        Password
+        <input type="password" bind:value={password} autocomplete="current-password" required />
+      </label>
+      <button type="submit" disabled={loggingIn}>
+        {loggingIn ? 'Signing in...' : 'Sign in'}
+      </button>
+    </form>
   {:else}
-    <table>
-      <thead>
-        <tr>
-          <th>Service</th>
-          <th>State</th>
-          <th>Health</th>
-          <th>Endpoint</th>
-          <th>Action</th>
-        </tr>
-      </thead>
-      <tbody>
-        {#each services as svc}
+    {#if errorMessage}
+      <div class="alert error">
+        {errorMessage}
+      </div>
+    {/if}
+
+    {#if loading}
+      <p>Loading services...</p>
+    {:else}
+      <table>
+        <thead>
           <tr>
-            <td><strong>{svc.name}</strong></td>
-            <td><span class="status status-{svc.state}">{svc.state}</span></td>
-            <td><span class="health health-{svc.health}">{svc.health}</span></td>
-            <td><code>{svc.endpoint || '-'}</code></td>
-            <td>
-              <button on:click={() => handleRestart(svc.name)}>Restart</button>
-            </td>
+            <th>Service</th>
+            <th>State</th>
+            <th>Health</th>
+            <th>Endpoint</th>
+            <th>Action</th>
           </tr>
-        {/each}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {#each services as svc}
+            <tr>
+              <td><strong>{svc.name}</strong></td>
+              <td><span class="status status-{svc.state}">{svc.state}</span></td>
+              <td><span class="health health-{svc.health}">{svc.health}</span></td>
+              <td><code>{svc.endpoint || '-'}</code></td>
+              <td>
+                <button on:click={() => handleRestart(svc.name)}>Restart</button>
+              </td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    {/if}
   {/if}
 </main>
 
@@ -91,6 +143,9 @@
     gap: 1rem;
     margin-bottom: 2rem;
   }
+  header h1 {
+    margin-right: auto;
+  }
   .badge {
     background: #e2e8f0;
     padding: 0.25rem 0.5rem;
@@ -103,6 +158,26 @@
     padding: 1rem;
     border-radius: 6px;
     margin-bottom: 1rem;
+  }
+  .login {
+    max-width: 360px;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+  .login h2 {
+    margin: 0;
+  }
+  .login label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    font-size: 0.875rem;
+  }
+  .login input {
+    padding: 0.5rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
   }
   table {
     width: 100%;
@@ -129,5 +204,16 @@
   }
   button:hover {
     background: #0369a1;
+  }
+  button.secondary {
+    background: #e2e8f0;
+    color: #0f172a;
+  }
+  button.secondary:hover {
+    background: #cbd5e1;
+  }
+  button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
 </style>

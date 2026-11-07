@@ -84,12 +84,15 @@ Người dùng quản trị instance (không phải end-user của project).
 | `id` | ULID | Yes | Session ID |
 | `admin_user_id` | ULID FK | Yes | |
 | `token_hash` | string | Yes | Hash của session token |
-| `csrf_secret_hash` | string | Yes | |
+| `csrf_secret_hash` | string | Yes | Hash của CSRF token; raw token mirror qua cookie `doctbase_csrf` + header `X-CSRF-Token` |
 | `ip` | inet | No | Audit |
 | `user_agent` | string | No | Audit |
 | `created_at` | timestamp | Yes | |
 | `expires_at` | timestamp | Yes | Mặc định 24h |
 | `revoked_at` | timestamp | No | |
+
+- Session cookie MUST là `HttpOnly; Secure; SameSite=Lax; Path=/`; token opaque, store chỉ giữ hash.
+- Mọi request không an toàn xác thực bằng cookie MUST kèm CSRF hợp lệ; internal bearer token (CLI/service) được miễn.
 
 ### 2.4. Project
 
