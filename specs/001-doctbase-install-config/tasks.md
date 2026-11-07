@@ -119,8 +119,8 @@ Monorepo theo [plan.md](./plan.md): `apps/`, `packages/`, `dashboard/`, `infrast
 
 - [x] T040 [US1] Implement read-only Linux host collection and preflight evaluation (OS, RAM, data disk, TCP listeners, optional DNS) in `apps/cli/src/install/preflight.zig`
 - [x] T041 [US1] Define transaction-safe package install plan/executor for PGDG PostgreSQL 18, PgBouncer, Caddy and optional libvips in `apps/cli/src/install/packages.zig`; unit tests in `tests/unit/install_packages_test.zig`
-- [ ] T042 [US1] Create system users/groups/directories/tmpfiles with documented modes in `apps/cli/src/install/users.zig`, `deploy/native/tmpfiles/doctbase.conf`
-- [ ] T043 [US1] Implement secret generation and file permissions in `apps/cli/src/install/secrets.zig`
+- [x] T042 [US1] Create system users/groups/directories/tmpfiles with documented modes in `apps/cli/src/install/users.zig`, `deploy/native/tmpfiles/doctbase.conf`
+- [x] T043 [US1] Implement secret generation and file permissions in `apps/cli/src/install/secrets.zig`
 - [ ] T044 [US1] Create dedicated PostgreSQL cluster `doctbase` on port 5433, UDS-only, with auto tuning in `apps/cli/src/install/postgres.zig`, `infrastructure/postgres/tuning.conf`
 - [ ] T045 [US1] Create template database, extensions, schemas and `pgbouncer_auth` function in `infrastructure/postgres/template.sql`
 - [ ] T046 [US1] Render and install PgBouncer UDS config/unit in `apps/cli/src/install/pgbouncer.zig`, `deploy/native/units/doctbase-pgbouncer.service.tmpl`

@@ -80,6 +80,19 @@ pub fn build(b: *std.Build) !void {
         .imports = &.{.{ .name = "preflight", .module = preflight_mod }},
     });
 
+    const install_users_mod = b.addModule("install_users", .{
+        .root_source_file = b.path("apps/cli/src/install/users.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const install_secrets_mod = b.addModule("install_secrets", .{
+        .root_source_file = b.path("apps/cli/src/install/secrets.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "security", .module = security_mod }},
+    });
+
     const gateway = b.addExecutable(.{
         .name = "doctbase-gateway",
         .root_module = b.createModule(.{
@@ -236,6 +249,36 @@ pub fn build(b: *std.Build) !void {
     test_step.dependOn(&run_install_packages_tests.step);
     const install_packages_test_step = b.step("test-install-packages", "Run package installer unit tests");
     install_packages_test_step.dependOn(&run_install_packages_tests.step);
+
+    const install_users_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/unit/install_users_test.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "install_users", .module = install_users_mod },
+            },
+        }),
+    });
+    const run_install_users_tests = b.addRunArtifact(install_users_tests);
+    test_step.dependOn(&run_install_users_tests.step);
+    const install_users_test_step = b.step("test-install-users", "Run installer identity and directory unit tests");
+    install_users_test_step.dependOn(&run_install_users_tests.step);
+
+    const install_secrets_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/unit/install_secrets_test.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "install_secrets", .module = install_secrets_mod },
+            },
+        }),
+    });
+    const run_install_secrets_tests = b.addRunArtifact(install_secrets_tests);
+    test_step.dependOn(&run_install_secrets_tests.step);
+    const install_secrets_test_step = b.step("test-install-secrets", "Run installer secret generation unit tests");
+    install_secrets_test_step.dependOn(&run_install_secrets_tests.step);
 
     inline for (.{ core_mod, config_mod, protocol_mod, runtime_mod, lifecycle_mod, postgres_mod, telemetry_mod, http_mod, security_mod }) |module| {
         const tests = b.addTest(.{ .root_module = module });
