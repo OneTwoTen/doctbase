@@ -73,6 +73,13 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
 
+    const install_packages_mod = b.addModule("install_packages", .{
+        .root_source_file = b.path("apps/cli/src/install/packages.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "preflight", .module = preflight_mod }},
+    });
+
     const gateway = b.addExecutable(.{
         .name = "doctbase-gateway",
         .root_module = b.createModule(.{
@@ -212,6 +219,22 @@ pub fn build(b: *std.Build) !void {
         }),
     });
     test_step.dependOn(&b.addRunArtifact(preflight_tests).step);
+
+    const install_packages_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/unit/install_packages_test.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "install_packages", .module = install_packages_mod },
+                .{ .name = "preflight", .module = preflight_mod },
+            },
+        }),
+    });
+    const run_install_packages_tests = b.addRunArtifact(install_packages_tests);
+    test_step.dependOn(&run_install_packages_tests.step);
+    const install_packages_test_step = b.step("test-install-packages", "Run package installer unit tests");
+    install_packages_test_step.dependOn(&run_install_packages_tests.step);
 
     inline for (.{ core_mod, config_mod, protocol_mod, runtime_mod, lifecycle_mod, postgres_mod, telemetry_mod, http_mod, security_mod }) |module| {
         const tests = b.addTest(.{ .root_module = module });

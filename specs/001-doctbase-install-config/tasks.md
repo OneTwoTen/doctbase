@@ -118,7 +118,7 @@ Monorepo theo [plan.md](./plan.md): `apps/`, `packages/`, `dashboard/`, `infrast
 ### Implementation for User Story 1
 
 - [x] T040 [US1] Implement read-only Linux host collection and preflight evaluation (OS, RAM, data disk, TCP listeners, optional DNS) in `apps/cli/src/install/preflight.zig`
-- [ ] T041 [US1] Implement package installation (PGDG PostgreSQL 18, PgBouncer, Caddy, optional libvips) in `apps/cli/src/install/packages.zig`
+- [x] T041 [US1] Define transaction-safe package install plan/executor for PGDG PostgreSQL 18, PgBouncer, Caddy and optional libvips in `apps/cli/src/install/packages.zig`; unit tests in `tests/unit/install_packages_test.zig`
 - [ ] T042 [US1] Create system users/groups/directories/tmpfiles with documented modes in `apps/cli/src/install/users.zig`, `deploy/native/tmpfiles/doctbase.conf`
 - [ ] T043 [US1] Implement secret generation and file permissions in `apps/cli/src/install/secrets.zig`
 - [ ] T044 [US1] Create dedicated PostgreSQL cluster `doctbase` on port 5433, UDS-only, with auto tuning in `apps/cli/src/install/postgres.zig`, `infrastructure/postgres/tuning.conf`
