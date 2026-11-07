@@ -121,11 +121,11 @@ Monorepo theo [plan.md](./plan.md): `apps/`, `packages/`, `dashboard/`, `infrast
 - [x] T041 [US1] Define transaction-safe package install plan/executor for PGDG PostgreSQL 18, PgBouncer, Caddy and optional libvips in `apps/cli/src/install/packages.zig`; unit tests in `tests/unit/install_packages_test.zig`
 - [x] T042 [US1] Create system users/groups/directories/tmpfiles with documented modes in `apps/cli/src/install/users.zig`, `deploy/native/tmpfiles/doctbase.conf`
 - [x] T043 [US1] Implement secret generation and file permissions in `apps/cli/src/install/secrets.zig`
-- [ ] T044 [US1] Create dedicated PostgreSQL cluster `doctbase` on port 5433, UDS-only, with auto tuning in `apps/cli/src/install/postgres.zig`, `infrastructure/postgres/tuning.conf`
-- [ ] T045 [US1] Create template database, extensions, schemas and `pgbouncer_auth` function in `infrastructure/postgres/template.sql`
-- [ ] T046 [US1] Render and install PgBouncer UDS config/unit in `apps/cli/src/install/pgbouncer.zig`, `deploy/native/units/doctbase-pgbouncer.service.tmpl`
-- [ ] T047 [US1] Render and install Caddy config/unit (UDS admin, auto TLS, per-host sites) in `apps/cli/src/install/caddy.zig`, `deploy/native/units/doctbase-caddy.service.tmpl`
-- [ ] T048 [US1] Create systemd unit templates/target and polkit allowlist in `deploy/native/units/doctbase-*.service.tmpl`, `deploy/native/polkit/50-doctbase.rules`
+- [x] T044 [US1] Create dedicated PostgreSQL cluster `doctbase` on port 5433, UDS-only, with auto tuning in `apps/cli/src/install/postgres.zig`, `infrastructure/postgres/tuning.conf`
+- [x] T045 [US1] Create template database, extensions, schemas and `pgbouncer_auth` function in `infrastructure/postgres/template.sql`
+- [x] T046 [US1] Render and install PgBouncer UDS config/unit in `apps/cli/src/install/pgbouncer.zig`, `deploy/native/units/doctbase-pgbouncer.service.tmpl`
+- [x] T047 [US1] Render and install Caddy config/unit (UDS admin, auto TLS, per-host sites) in `apps/cli/src/install/caddy.zig`, `deploy/native/units/doctbase-caddy.service.tmpl`
+- [x] T048 [US1] Create systemd unit templates/target and polkit allowlist in `deploy/native/units/doctbase-*.service.tmpl`, `deploy/native/polkit/50-doctbase.rules`
 - [ ] T049 [US1] Implement install orchestration, state file, lock and rollback in `apps/cli/src/install/install.zig`, `apps/cli/src/install/state.zig`
 - [ ] T050 [US1] Implement admin bootstrap and one-time setup token in `apps/cli/src/install/bootstrap.zig`, `apps/management/src/api/setup.zig`
 - [ ] T051 [US1] Implement post-install health verification and rollback in `apps/cli/src/install/health.zig`

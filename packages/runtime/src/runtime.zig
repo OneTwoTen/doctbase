@@ -443,6 +443,13 @@ pub fn runService(init: std.process.Init, service_key: []const u8) !void {
     else
         .dev;
 
+    // Native units pass the internal token through systemd credentials, never
+    // through the environment. Docker mode keeps using DOCTBASE_INTERNAL_TOKEN.
+    const credential_loader = secrets.CredentialLoader.init(init.gpa, init.io, environment);
+    const credential_token = credential_loader.loadCredentialOwned("internal_token") catch null;
+    defer if (credential_token) |value| init.gpa.free(value);
+    const internal_token = if (credential_token) |value| value else environment.get("DOCTBASE_INTERNAL_TOKEN");
+
     const options: Options = .{
         .service_key = service_key,
         .version = "0.1.0",
@@ -452,7 +459,7 @@ pub fn runService(init: std.process.Init, service_key: []const u8) !void {
         .run_dir = environment.get("DOCTBASE_RUN_DIR"),
         .socket_path = environment.get("DOCTBASE_SOCKET_PATH"),
         .listen = environment.get("DOCTBASE_LISTEN"),
-        .internal_token = environment.get("DOCTBASE_INTERNAL_TOKEN"),
+        .internal_token = internal_token,
         .allow_missing_config = mode == .dev,
     };
 
