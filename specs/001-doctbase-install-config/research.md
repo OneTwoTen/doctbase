@@ -192,6 +192,17 @@ doctbase backup | restore | upgrade | support | uninstall
 - **Dùng cluster mặc định 5432**: dễ xung đột, khó uninstall.
 - **Chỉ hỗ trợ Docker**: trái native-first.
 
+**Identity and directories (T042)**:
+- Group chung `doctbase`; mỗi service một system user `doctbase-*` (gồm `doctbase-image` cho executable `doctbase-image-proxy`), home `/nonexistent`, shell `nologin`, primary group `doctbase`; không tạo home.
+- `/run/doctbase` do tmpfiles quản lý tại `/etc/tmpfiles.d/doctbase.conf` (`0770 root:doctbase`) vì `/run` là tmpfs và socket phải được tạo lại sau reboot.
+- Re-run idempotent: tài nguyên khớp spec thì giữ nguyên; mode của thư mục do Doctbase sở hữu được sửa lại; tài khoản/thư mục lạ (khác owner, group hoặc loại tài khoản) trả conflict thay vì tự chown/adopt.
+
+**Secrets (T043)**:
+- Bốn secret `postgres_admin`, `pgbouncer_auth`, `internal_token`, `admin_setup_token`; mỗi secret 32 byte CSPRNG, lưu hex thường 64 ký tự, không newline, mode `0600 root:doctbase` tại `/etc/doctbase/secrets`.
+- Không bao giờ ghi đè secret đã tồn tại; file thiếu được tạo atomic với `O_EXCL`/atomic link. Mode lỏng được sửa lại nhưng không đọc/ghi lại nội dung; owner/group lạ hoặc symlink trả conflict.
+- `admin_setup_token` hết hạn 30 phút và chỉ dùng một lần được thực thi ở luồng bootstrap/consume (T050), không mã hoá metadata hết hạn trong file secret.
+- Không đưa secret vào TOML, env hay log; native dùng systemd `LoadCredential=`.
+
 ## 11. Backup, restore, upgrade
 
 **Decision**: Backup logic gồm control DB, project DBs, storage, auth keys, config, generated files, manifest/checksum; restore cùng version; upgrade có backup, migration lock, health check, rollback.
