@@ -93,6 +93,33 @@ pub fn build(b: *std.Build) !void {
         .imports = &.{.{ .name = "security", .module = security_mod }},
     });
 
+    const install_postgres_mod = b.addModule("install_postgres", .{
+        .root_source_file = b.path("apps/cli/src/install/postgres.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const install_pgbouncer_mod = b.addModule("install_pgbouncer", .{
+        .root_source_file = b.path("apps/cli/src/install/pgbouncer.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const install_caddy_mod = b.addModule("install_caddy", .{
+        .root_source_file = b.path("apps/cli/src/install/caddy.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const install_units_mod = b.addModule("install_units", .{
+        .root_source_file = b.path("apps/cli/src/install/units.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "service_lifecycle", .module = lifecycle_mod },
+        },
+    });
+
     const gateway = b.addExecutable(.{
         .name = "doctbase-gateway",
         .root_module = b.createModule(.{
@@ -279,6 +306,68 @@ pub fn build(b: *std.Build) !void {
     test_step.dependOn(&run_install_secrets_tests.step);
     const install_secrets_test_step = b.step("test-install-secrets", "Run installer secret generation unit tests");
     install_secrets_test_step.dependOn(&run_install_secrets_tests.step);
+
+    const install_postgres_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/unit/install_postgres_test.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "install_postgres", .module = install_postgres_mod },
+            },
+        }),
+    });
+    const run_install_postgres_tests = b.addRunArtifact(install_postgres_tests);
+    test_step.dependOn(&run_install_postgres_tests.step);
+    const install_postgres_test_step = b.step("test-install-postgres", "Run PostgreSQL cluster provisioning unit tests");
+    install_postgres_test_step.dependOn(&run_install_postgres_tests.step);
+
+    const install_pgbouncer_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/unit/install_pgbouncer_test.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "install_pgbouncer", .module = install_pgbouncer_mod },
+            },
+        }),
+    });
+    const run_install_pgbouncer_tests = b.addRunArtifact(install_pgbouncer_tests);
+    test_step.dependOn(&run_install_pgbouncer_tests.step);
+    const install_pgbouncer_test_step = b.step("test-install-pgbouncer", "Run PgBouncer configuration unit tests");
+    install_pgbouncer_test_step.dependOn(&run_install_pgbouncer_tests.step);
+
+    const install_caddy_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/unit/install_caddy_test.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "install_caddy", .module = install_caddy_mod },
+            },
+        }),
+    });
+    const run_install_caddy_tests = b.addRunArtifact(install_caddy_tests);
+    test_step.dependOn(&run_install_caddy_tests.step);
+    const install_caddy_test_step = b.step("test-install-caddy", "Run Caddy configuration unit tests");
+    install_caddy_test_step.dependOn(&run_install_caddy_tests.step);
+
+    const install_units_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/unit/install_units_test.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "install_units", .module = install_units_mod },
+                .{ .name = "install_users", .module = install_users_mod },
+                .{ .name = "service_lifecycle", .module = lifecycle_mod },
+            },
+        }),
+    });
+    const run_install_units_tests = b.addRunArtifact(install_units_tests);
+    test_step.dependOn(&run_install_units_tests.step);
+    const install_units_test_step = b.step("test-install-units", "Run systemd unit and polkit rendering unit tests");
+    install_units_test_step.dependOn(&run_install_units_tests.step);
 
     inline for (.{ core_mod, config_mod, protocol_mod, runtime_mod, lifecycle_mod, postgres_mod, telemetry_mod, http_mod, security_mod }) |module| {
         const tests = b.addTest(.{ .root_module = module });

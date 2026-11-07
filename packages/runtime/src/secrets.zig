@@ -35,6 +35,30 @@ pub const CredentialLoader = struct {
 
         return null;
     }
+
+    /// Read a systemd credential into a caller-owned copy. Only the credentials
+    /// directory is consulted: a unit that expects `LoadCredential=` must never
+    /// be silently satisfied by a different environment variable.
+    pub fn loadCredentialOwned(self: CredentialLoader, name: []const u8) !?[]u8 {
+        const environ = self.environ orelse return null;
+        const directory = environ.get("CREDENTIALS_DIRECTORY") orelse return null;
+
+        const credential_path = try std.fmt.allocPrint(self.allocator, "{s}/{s}", .{ directory, name });
+        defer self.allocator.free(credential_path);
+
+        const raw = std.Io.Dir.cwd().readFileAlloc(
+            self.io,
+            credential_path,
+            self.allocator,
+            .unlimited,
+        ) catch |err| switch (err) {
+            error.FileNotFound, error.NotDir, error.AccessDenied => return null,
+            else => return err,
+        };
+        defer self.allocator.free(raw);
+
+        return try self.allocator.dupe(u8, std.mem.trim(u8, raw, " \t\r\n"));
+    }
 };
 
 test "credential loader falls back gracefully" {
@@ -43,4 +67,31 @@ test "credential loader falls back gracefully" {
 
     const loader = CredentialLoader.init(allocator, io, null);
     try std.testing.expectEqual(@as(?[]const u8, null), loader.loadCredential("NON_EXISTENT_KEY"));
+    try std.testing.expectEqual(@as(?[]u8, null), try loader.loadCredentialOwned("internal_token"));
+}
+
+test "credential loader reads systemd credentials as an owned copy" {
+    const allocator = std.testing.allocator;
+    const io = std.testing.io;
+
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    try temporary.dir.writeFile(io, .{
+        .sub_path = "internal_token",
+        .data = "  abc123\n",
+    });
+    const directory = blk: {
+        var path_buffer: [std.fs.max_path_bytes]u8 = undefined;
+        const length = try temporary.dir.realPath(io, &path_buffer);
+        break :blk path_buffer[0..length];
+    };
+
+    var environ = std.process.Environ.Map.init(allocator);
+    defer environ.deinit();
+    try environ.put("CREDENTIALS_DIRECTORY", directory);
+
+    const loader = CredentialLoader.init(allocator, io, &environ);
+    const value = (try loader.loadCredentialOwned("internal_token")).?;
+    defer allocator.free(value);
+    try std.testing.expectEqualStrings("abc123", value);
 }
