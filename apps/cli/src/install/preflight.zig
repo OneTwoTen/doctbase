@@ -428,13 +428,21 @@ fn existingDataDirectory(io: std.Io, arena_allocator: std.mem.Allocator, data_pa
     }
 }
 
+/// Read a file with a streaming reader rather than a stat-size-driven one.
+/// Pseudo-filesystems such as procfs report a size of zero while still
+/// returning data, so `readFileAlloc` would treat /proc/meminfo and
+/// /proc/net/tcp* as empty and every preflight probe would fail.
 fn readAbsolute(
     gpa: std.mem.Allocator,
     io: std.Io,
     arena_allocator: std.mem.Allocator,
     path: []const u8,
 ) !?[]const u8 {
-    const contents = std.Io.Dir.cwd().readFileAlloc(io, path, gpa, .limited(1024 * 1024)) catch |err| switch (err) {
+    var file = std.Io.Dir.cwd().openFile(io, path, .{}) catch return null;
+    defer file.close(io);
+
+    var reader = file.readerStreaming(io, &.{});
+    const contents = reader.interface.allocRemaining(gpa, .limited(1024 * 1024)) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
         else => return null,
     };
