@@ -285,12 +285,18 @@ pub fn parseMemTotal(contents: []const u8) ?u64 {
     return null;
 }
 
-/// Parse the available KiB value emitted by `df -Pk --output=avail`.
+/// Parse the available KiB value from portable `df -Pk` output.
 pub fn parseDfAvailable(contents: []const u8) ?u64 {
     var lines = std.mem.tokenizeScalar(u8, contents, '\n');
     _ = lines.next() orelse return null; // header
     const row = lines.next() orelse return null;
-    const value = std.mem.trim(u8, row, " \t\r");
+
+    var fields = std.mem.tokenizeAny(u8, row, " \t\r");
+    _ = fields.next() orelse return null; // filesystem
+    _ = fields.next() orelse return null; // 1024-blocks
+    _ = fields.next() orelse return null; // used
+    const value = fields.next() orelse return null; // available
+
     const kib = std.fmt.parseInt(u64, value, 10) catch return null;
     return std.math.mul(u64, kib, 1024) catch null;
 }
@@ -366,7 +372,7 @@ pub fn collect(allocator: std.mem.Allocator, io: std.Io, options: CollectionOpti
     }
 
     if (try existingDataDirectory(io, arena_allocator, options.data_path)) |disk_path| {
-        if (try runCommand(allocator, io, arena_allocator, &.{ "df", "-Pk", "--output=avail", "--", disk_path })) |output| {
+        if (try runCommand(allocator, io, arena_allocator, &.{ "df", "-Pk", "--", disk_path })) |output| {
             if (output.succeeded) if (parseDfAvailable(output.stdout)) |available| {
                 facts.available_disk_bytes = available;
                 facts.disk_probe_available = true;

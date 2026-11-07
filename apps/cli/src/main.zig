@@ -1,6 +1,7 @@
 const std = @import("std");
 const lifecycle = @import("service_lifecycle");
 const config_cmd = @import("commands/config.zig");
+const install_cmd = @import("commands/install.zig");
 pub const output = @import("output.zig");
 
 var stop_requested: std.atomic.Value(bool) = .init(false);
@@ -43,6 +44,9 @@ pub fn main(init: std.process.Init) !void {
         return;
     };
 
+    if (std.mem.eql(u8, cmd, "install")) {
+        return install_cmd.run(init, &args, globals.yes, globals.dry_run);
+    }
     if (std.mem.eql(u8, cmd, "dev")) {
         return runDev(init, &args);
     }
@@ -380,6 +384,8 @@ fn printUsage() void {
         \\Usage: doctbase <command> [options]
         \\
         \\Commands:
+        \\  install [--domain HOST] [--email ADDR] [--yes] [--dry-run]
+        \\          [--assets DIR] [--bin-dir DIR]
         \\  dev [--run-dir DIR] [--bin-dir DIR] [--config FILE] [--token TOKEN]
         \\      [--service NAME]...
         \\  status [--systemctl PATH] [--compose] [--compose-file FILE]
@@ -388,6 +394,8 @@ fn printUsage() void {
         \\  config <validate|show|explain> [--config PATH]
         \\
         \\Examples:
+        \\  doctbase install --domain example.com --email admin@example.com --yes
+        \\  doctbase install --dry-run
         \\  doctbase dev
         \\  doctbase dev --service gateway --service auth --token dev-secret
         \\  doctbase status

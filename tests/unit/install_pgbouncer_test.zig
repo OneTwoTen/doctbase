@@ -108,3 +108,18 @@ test "PgBouncer unit template is non-root and socket-oriented" {
     try std.testing.expect(std.mem.indexOf(u8, unit, "listen_addr") == null);
     try std.testing.expect(std.mem.indexOf(u8, unit, "2019") == null);
 }
+
+test "auth_file entry quotes and escapes the auth_query account" {
+    const allocator = std.testing.allocator;
+
+    const plain = try pgbouncer.renderAuthFile(allocator, pgbouncer.auth_user, "0123456789abcdef");
+    defer allocator.free(plain);
+    try std.testing.expectEqualStrings("\"pgbouncer_auth\" \"0123456789abcdef\"\n", plain);
+
+    const escaped = try pgbouncer.renderAuthFile(allocator, pgbouncer.auth_user, "p\"a\\ss");
+    defer allocator.free(escaped);
+    try std.testing.expectEqualStrings("\"pgbouncer_auth\" \"p\\\"a\\\\ss\"\n", escaped);
+
+    try std.testing.expectError(error.InvalidSecret, pgbouncer.renderAuthFile(allocator, pgbouncer.auth_user, ""));
+    try std.testing.expectError(error.InvalidAuthUser, pgbouncer.renderAuthFile(allocator, "bad user", "secret"));
+}
