@@ -57,6 +57,9 @@ jobs:
       - name: Test
         run: zig build test --summary all
 
+      - name: Bootstrap installer smoke test
+        run: sh tests/e2e/bootstrap-install.sh
+
       - name: Cross-build (aarch64-linux)
         run: zig build -Dtarget=aarch64-linux-gnu --summary all
 
@@ -97,6 +100,20 @@ jobs:
           $compose config -q
           $compose --profile bundled config -q
           $compose --profile optional config -q
+
+      - name: Validate standalone Docker template
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/doctbase-docker
+          sed -e 's/@INSTANCE_NAME@/doctbase/' \
+              -e 's#@IMAGE_PREFIX@#doctbase#' \
+              -e 's/@VERSION@/ci/' \
+              deploy/docker/compose.yml.tmpl > /tmp/doctbase-docker/compose.yml
+          ! grep -q '@[A-Z_]*@' /tmp/doctbase-docker/compose.yml
+          docker compose -f /tmp/doctbase-docker/compose.yml \
+            --env-file deploy/docker/.env.example config -q
+          docker compose -f /tmp/doctbase-docker/compose.yml \
+            --env-file deploy/docker/.env.example --profile bundled config -q
 
       - name: Build gateway and management images
         run: docker compose -f deploy/docker/compose.yml build gateway management

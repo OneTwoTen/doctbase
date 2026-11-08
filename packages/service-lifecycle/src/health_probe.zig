@@ -17,8 +17,6 @@ pub fn probe(io: std.Io, endpoint: []const u8, timeout_ms: u32, path: []const u8
     var stream = try address.connect(io);
     defer stream.close(io);
 
-    applyTimeout(stream.socket.handle, timeout_ms);
-
     var write_buffer: [512]u8 = undefined;
     var writer = stream.writer(io, &write_buffer);
     try writer.interface.print(
@@ -32,6 +30,11 @@ pub fn probe(io: std.Io, endpoint: []const u8, timeout_ms: u32, path: []const u8
     var response: [2048]u8 = undefined;
     var used: usize = 0;
     while (used < response.len) {
+        // SO_RCVTIMEO makes the kernel return EAGAIN on expiry, which Zig 0.17
+        // treats as a programmer bug. Wait for readability explicitly so a
+        // non-HTTP peer (for example a misconfigured PgBouncer socket) times
+        // out instead of aborting the CLI.
+        try waitReadable(stream.socket.handle, timeout_ms);
         const count = try reader.interface.readSliceShort(response[used..]);
         if (count == 0) break;
         used += count;
@@ -52,10 +55,12 @@ pub fn probe(io: std.Io, endpoint: []const u8, timeout_ms: u32, path: []const u8
     };
 }
 
-fn applyTimeout(fd: std.posix.socket_t, timeout_ms: u32) void {
-    const seconds: i64 = @intCast(timeout_ms / 1000);
-    const micros: i64 = @intCast((timeout_ms % 1000) * 1000);
-    var value: std.posix.timeval = .{ .sec = @intCast(seconds), .usec = @intCast(micros) };
-    std.posix.setsockopt(fd, std.posix.SOL.SOCKET, std.posix.SO.RCVTIMEO, std.mem.asBytes(&value)) catch {};
-    std.posix.setsockopt(fd, std.posix.SOL.SOCKET, std.posix.SO.SNDTIMEO, std.mem.asBytes(&value)) catch {};
+fn waitReadable(fd: std.posix.socket_t, timeout_ms: u32) ProbeError!void {
+    var fds = [1]std.posix.pollfd{.{
+        .fd = fd,
+        .events = std.posix.POLL.IN,
+        .revents = 0,
+    }};
+    const ready = std.posix.poll(&fds, @intCast(@min(timeout_ms, std.math.maxInt(i32)))) catch return error.Timeout;
+    if (ready == 0) return error.Timeout;
 }

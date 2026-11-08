@@ -59,6 +59,7 @@ pub const directories = [_]DirectorySpec{
     .{ .path = "/etc/doctbase/generated", .mode = 0o750, .owner = "doctbase-management" },
     .{ .path = "/var/lib/doctbase", .mode = 0o750, .owner = "root" },
     .{ .path = "/var/lib/doctbase/projects", .mode = 0o770, .owner = "doctbase-management" },
+    .{ .path = "/var/lib/doctbase/control", .mode = 0o700, .owner = "doctbase-management" },
     .{ .path = "/var/lib/doctbase/auth", .mode = 0o700, .owner = "doctbase-auth" },
     .{ .path = "/var/lib/doctbase/pgbouncer", .mode = 0o700, .owner = "doctbase-pgbouncer" },
     .{ .path = "/var/lib/doctbase/cache", .mode = 0o770, .owner = "doctbase-image" },

@@ -22,6 +22,7 @@ pub const binary_directory = "/usr/local/lib/doctbase/current/bin";
 pub const config_path = "/etc/doctbase/doctbase.toml";
 pub const run_directory = "/run/doctbase";
 pub const internal_token_path = "/etc/doctbase/secrets/internal_token";
+pub const setup_token_path = "/etc/doctbase/secrets/admin_setup_token";
 
 /// Service accounts are defined once in the identity policy. Keep this switch
 /// exhaustive so a new registry entry cannot silently run as the wrong user.
@@ -42,12 +43,21 @@ pub fn userFor(key: registry.ServiceKey) []const u8 {
 /// Paths each service may write while `ProtectSystem=strict` is active.
 pub fn readWritePaths(key: registry.ServiceKey) []const u8 {
     return switch (key) {
-        .management => run_directory ++ " /var/lib/doctbase/projects /etc/doctbase/generated",
+        .management => run_directory ++ " /var/lib/doctbase/projects /var/lib/doctbase/control /etc/doctbase/generated",
         .auth => run_directory ++ " /var/lib/doctbase/auth",
         .storage => run_directory ++ " /var/lib/doctbase/projects",
         .image_proxy => run_directory ++ " /var/lib/doctbase/cache",
         .gateway, .rest, .realtime, .pg_meta => run_directory,
         .postgresql, .pgbouncer, .caddy => unreachable,
+    };
+}
+
+/// Only the management plane consumes the one-time admin setup token. Every
+/// app service still receives the shared internal token.
+fn extraCredentials(key: registry.ServiceKey) []const u8 {
+    return switch (key) {
+        .management => "LoadCredential=admin_setup_token:" ++ setup_token_path ++ "\n",
+        else => "",
     };
 }
 
@@ -102,6 +112,7 @@ pub fn renderApp(
         .{ .name = "RUN_DIR", .value = run_directory },
         .{ .name = "BIN_DIR", .value = binary_directory },
         .{ .name = "INTERNAL_TOKEN", .value = internal_token_path },
+        .{ .name = "EXTRA_CREDENTIALS", .value = extraCredentials(spec.key) },
         .{ .name = "TARGET", .value = target_name },
     };
     return substitute(allocator, template, &pairs);

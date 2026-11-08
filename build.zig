@@ -152,6 +152,12 @@ pub fn build(b: *std.Build) !void {
         },
     });
 
+    const install_bootstrap_mod = b.addModule("install_bootstrap", .{
+        .root_source_file = b.path("apps/cli/src/install/bootstrap.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
     const install_host_mod = b.addModule("install_host", .{
         .root_source_file = b.path("apps/cli/src/install/host.zig"),
         .target = target,
@@ -165,6 +171,7 @@ pub fn build(b: *std.Build) !void {
             .{ .name = "install_packages", .module = install_packages_mod },
             .{ .name = "install_users", .module = install_users_mod },
             .{ .name = "install_secrets", .module = install_secrets_mod },
+            .{ .name = "install_bootstrap", .module = install_bootstrap_mod },
             .{ .name = "install_postgres", .module = install_postgres_mod },
             .{ .name = "install_pgbouncer", .module = install_pgbouncer_mod },
             .{ .name = "install_caddy", .module = install_caddy_mod },
@@ -180,6 +187,36 @@ pub fn build(b: *std.Build) !void {
         .imports = &.{
             .{ .name = "install_orchestrator", .module = install_orchestrator_mod },
             .{ .name = "preflight", .module = preflight_mod },
+        },
+    });
+
+    const docker_mod = b.addModule("docker", .{
+        .root_source_file = b.path("apps/cli/src/commands/docker.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "install_caddy", .module = install_caddy_mod },
+            .{ .name = "security", .module = security_mod },
+        },
+    });
+
+    const repair_mod = b.addModule("repair", .{
+        .root_source_file = b.path("apps/cli/src/install/repair.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "install_orchestrator", .module = install_orchestrator_mod },
+            .{ .name = "install_state", .module = install_state_mod },
+        },
+    });
+
+    const uninstall_mod = b.addModule("uninstall", .{
+        .root_source_file = b.path("apps/cli/src/commands/uninstall.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "service_lifecycle", .module = lifecycle_mod },
+            .{ .name = "install_users", .module = install_users_mod },
         },
     });
 
@@ -209,6 +246,20 @@ pub fn build(b: *std.Build) !void {
     });
     b.installArtifact(auth);
 
+    const management_app_mod = b.addModule("management_app", .{
+        .root_source_file = b.path("apps/management/src/app.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "runtime", .module = runtime_mod },
+            .{ .name = "httpz", .module = httpz_mod },
+            .{ .name = "service_lifecycle", .module = lifecycle_mod },
+            .{ .name = "security", .module = security_mod },
+            .{ .name = "core", .module = core_mod },
+            .{ .name = "service_protocol", .module = protocol_mod },
+        },
+    });
+
     const management = b.addExecutable(.{
         .name = "doctbase-management",
         .root_module = b.createModule(.{
@@ -219,6 +270,7 @@ pub fn build(b: *std.Build) !void {
                 .{ .name = "runtime", .module = runtime_mod },
                 .{ .name = "service_lifecycle", .module = lifecycle_mod },
                 .{ .name = "security", .module = security_mod },
+                .{ .name = "management_app", .module = management_app_mod },
             },
         }),
     });
@@ -299,8 +351,12 @@ pub fn build(b: *std.Build) !void {
                 .{ .name = "service_lifecycle", .module = lifecycle_mod },
                 .{ .name = "config", .module = config_mod },
                 .{ .name = "install_orchestrator", .module = install_orchestrator_mod },
+                .{ .name = "install_state", .module = install_state_mod },
                 .{ .name = "install_host", .module = install_host_mod },
                 .{ .name = "install_summary", .module = install_summary_mod },
+                .{ .name = "install_users", .module = install_users_mod },
+                .{ .name = "install_caddy", .module = install_caddy_mod },
+                .{ .name = "security", .module = security_mod },
             },
         }),
     });
@@ -316,6 +372,15 @@ pub fn build(b: *std.Build) !void {
     fmt_step.dependOn(&fmt_command.step);
 
     const test_step = b.step("test", "Run unit tests");
+
+    const manifest_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tools/manifest.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    test_step.dependOn(&b.addRunArtifact(manifest_tests).step);
 
     const preflight_tests = b.addTest(.{
         .root_module = b.createModule(.{
@@ -503,7 +568,7 @@ pub fn build(b: *std.Build) !void {
     const install_config_test_step = b.step("test-install-config", "Run generated configuration tests");
     install_config_test_step.dependOn(&run_install_config_tests.step);
 
-    inline for (.{ core_mod, config_mod, protocol_mod, runtime_mod, lifecycle_mod, postgres_mod, telemetry_mod, http_mod, security_mod, install_state_mod }) |module| {
+    inline for (.{ core_mod, config_mod, protocol_mod, runtime_mod, lifecycle_mod, postgres_mod, telemetry_mod, http_mod, security_mod, install_state_mod, install_host_mod }) |module| {
         const tests = b.addTest(.{ .root_module = module });
         const run_tests = b.addRunArtifact(tests);
         test_step.dependOn(&run_tests.step);
@@ -534,6 +599,20 @@ pub fn build(b: *std.Build) !void {
     });
     const run_security_tests = b.addRunArtifact(security_tests);
     test_step.dependOn(&run_security_tests.step);
+
+    const management_setup_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/integration/management_setup_test.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "runtime", .module = runtime_mod },
+                .{ .name = "service_lifecycle", .module = lifecycle_mod },
+                .{ .name = "management_app", .module = management_app_mod },
+            },
+        }),
+    });
+    test_step.dependOn(&b.addRunArtifact(management_setup_tests).step);
 
     const runtime_tcp_tests = b.addTest(.{
         .root_module = b.createModule(.{
@@ -600,6 +679,55 @@ pub fn build(b: *std.Build) !void {
             },
         }),
     });
+    const docker_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/unit/docker_init_test.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "docker", .module = docker_mod },
+            },
+        }),
+    });
+    const run_docker_tests = b.addRunArtifact(docker_tests);
+    test_step.dependOn(&run_docker_tests.step);
+    const docker_test_step = b.step("test-docker-init", "Run Docker init/up rendering tests");
+    docker_test_step.dependOn(&run_docker_tests.step);
+
+    const repair_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/unit/repair_test.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "repair", .module = repair_mod },
+                .{ .name = "install_orchestrator", .module = install_orchestrator_mod },
+                .{ .name = "install_state", .module = install_state_mod },
+                .{ .name = "preflight", .module = preflight_mod },
+            },
+        }),
+    });
+    const run_repair_tests = b.addRunArtifact(repair_tests);
+    test_step.dependOn(&run_repair_tests.step);
+    const repair_test_step = b.step("test-repair", "Run native repair/reinstall tests");
+    repair_test_step.dependOn(&run_repair_tests.step);
+
+    const uninstall_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/unit/uninstall_test.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "uninstall", .module = uninstall_mod },
+                .{ .name = "service_lifecycle", .module = lifecycle_mod },
+            },
+        }),
+    });
+    const run_uninstall_tests = b.addRunArtifact(uninstall_tests);
+    test_step.dependOn(&run_uninstall_tests.step);
+    const uninstall_test_step = b.step("test-uninstall", "Run native uninstall policy tests");
+    uninstall_test_step.dependOn(&run_uninstall_tests.step);
+
     const cli_output_tests = b.addTest(.{
         .root_module = b.createModule(.{
             .root_source_file = b.path("apps/cli/src/output.zig"),

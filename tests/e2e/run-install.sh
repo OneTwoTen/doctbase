@@ -1,6 +1,8 @@
 #!/bin/sh
+# Compatibility entrypoint for the original E2E scaffold.
+# The real fresh-install check lives in install-ubuntu.sh; the multi-cell runner
+# is matrix-install.sh.
 set -eu
 
-printf '%s\n' 'The isolated-VM install runner is not implemented yet.' >&2
-printf '%s\n' 'This scaffold deliberately performs no host changes.' >&2
-exit 78
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+exec sh "$SCRIPT_DIR/install-ubuntu.sh" "$@"

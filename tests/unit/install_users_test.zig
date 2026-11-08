@@ -93,6 +93,7 @@ test "directory modes and owners follow the documented layout" {
         .{ .path = "/etc/doctbase/generated", .mode = 0o750, .owner = "doctbase-management" },
         .{ .path = "/var/lib/doctbase", .mode = 0o750, .owner = "root" },
         .{ .path = "/var/lib/doctbase/projects", .mode = 0o770, .owner = "doctbase-management" },
+        .{ .path = "/var/lib/doctbase/control", .mode = 0o700, .owner = "doctbase-management" },
         .{ .path = "/var/lib/doctbase/auth", .mode = 0o700, .owner = "doctbase-auth" },
         .{ .path = "/var/lib/doctbase/pgbouncer", .mode = 0o700, .owner = "doctbase-pgbouncer" },
         .{ .path = "/var/lib/doctbase/cache", .mode = 0o770, .owner = "doctbase-image" },
@@ -177,6 +178,8 @@ test "tmpfiles creates the runtime socket directory with restricted modes" {
     defer std.testing.allocator.free(contents);
 
     try std.testing.expect(std.mem.indexOf(u8, contents, "d /run/doctbase 0770 root doctbase -") != null);
+    try std.testing.expect(std.mem.indexOf(u8, contents, "L /run/doctbase/pgbouncer.sock") != null);
+    try std.testing.expect(std.mem.indexOf(u8, contents, ".s.PGSQL.6432") != null);
     try std.testing.expect(std.mem.indexOf(u8, contents, "0777") == null);
 }
 
