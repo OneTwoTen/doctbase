@@ -21,6 +21,14 @@ pub const Mode = enum {
     }
 };
 
+/// Optional application handler for routes the shared runtime does not own
+/// (management/auth project APIs). Core health/ready/metrics/info stay in the
+/// runtime so every service exposes the same contract.
+pub const Fallback = struct {
+    context: *anyopaque,
+    handler: *const fn (context: *anyopaque, req: *httpz.Request, res: *httpz.Response) anyerror!void,
+};
+
 pub const Options = struct {
     service_key: []const u8,
     version: []const u8 = "0.1.0",
@@ -37,6 +45,7 @@ pub const Options = struct {
     internal_token: ?[]const u8 = null,
     allow_missing_config: bool = true,
     install_signal_handlers: bool = true,
+    fallback: ?Fallback = null,
 };
 
 pub const Runtime = struct {
@@ -324,7 +333,14 @@ pub const Context = struct {
     }
 
     pub fn notFound(self: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-        _ = self;
+        if (self.runtime.options.fallback) |fallback| {
+            fallback.handler(fallback.context, req, res) catch |err| {
+                self.uncaughtError(req, res, err);
+                return;
+            };
+            return;
+        }
+
         var docs_buffer: [128]u8 = undefined;
         const docs = core.Code.not_found.docsUrl(&docs_buffer) catch "";
         const payload = protocol.Problem{
@@ -437,6 +453,10 @@ fn constantTimeEql(a: []const u8, b: []const u8) bool {
 /// Convenience entry point for service binaries. Production units set
 /// `DOCTBASE_MODE=native`; `doctbase dev` leaves it unset (dev mode).
 pub fn runService(init: std.process.Init, service_key: []const u8) !void {
+    return runServiceWithFallback(init, service_key, null);
+}
+
+pub fn runServiceWithFallback(init: std.process.Init, service_key: []const u8, fallback: ?Fallback) !void {
     const environment = init.environ_map;
     const mode = if (environment.get("DOCTBASE_MODE")) |raw|
         std.meta.stringToEnum(Mode, raw) orelse .native
@@ -461,6 +481,7 @@ pub fn runService(init: std.process.Init, service_key: []const u8) !void {
         .listen = environment.get("DOCTBASE_LISTEN"),
         .internal_token = internal_token,
         .allow_missing_config = mode == .dev,
+        .fallback = fallback,
     };
 
     const rt = try Runtime.create(init.gpa, init.io, options);

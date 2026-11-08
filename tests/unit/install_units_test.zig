@@ -113,11 +113,13 @@ test "only the management plane can read the system journal" {
     const management = try units.renderApp(allocator, template, registry.get(.management));
     defer allocator.free(management);
     try std.testing.expect(std.mem.indexOf(u8, management, "SupplementaryGroups=systemd-journal") != null);
-    try std.testing.expect(std.mem.indexOf(u8, management, "ReadWritePaths=/run/doctbase /var/lib/doctbase/projects /etc/doctbase/generated") != null);
+    try std.testing.expect(std.mem.indexOf(u8, management, "ReadWritePaths=/run/doctbase /var/lib/doctbase/projects /var/lib/doctbase/control /etc/doctbase/generated") != null);
+    try std.testing.expect(std.mem.indexOf(u8, management, "LoadCredential=admin_setup_token:/etc/doctbase/secrets/admin_setup_token") != null);
 
     const gateway = try units.renderApp(allocator, template, registry.get(.gateway));
     defer allocator.free(gateway);
     try std.testing.expect(std.mem.indexOf(u8, gateway, "SupplementaryGroups=") == null);
+    try std.testing.expect(std.mem.indexOf(u8, gateway, "admin_setup_token") == null);
 }
 
 test "writable paths are scoped to each service" {

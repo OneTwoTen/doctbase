@@ -82,7 +82,27 @@ Job thứ hai (`docker-toolchain`) build `deploy/dev/Dockerfile` rồi chạy `z
 
 Job thứ ba (`compose-resource`) validate `deploy/docker/compose.yml` và các profile, build image production cho gateway/management, chạy hai container, kiểm tra `/readyz` qua TCP, xác nhận endpoint nội bộ từ chối request thiếu token, và khẳng định không service nào publish cổng.
 
-E2E install matrix (Ubuntu 24.04, Debian 13, x86_64/arm64) nằm ở task T136 trong [`specs/001-doctbase-install-config/tasks.md`](../specs/001-doctbase-install-config/tasks.md) và chưa được bật.
+E2E native install có hai entrypoint:
+
+```bash
+# Manifest/artifact có chữ ký, không thay đổi host
+sh tests/e2e/bootstrap-install.sh
+
+# Một host sạch (root): Ubuntu 24.04/26.04 hoặc Debian 13
+sudo DOCTBASE_BIN_DIR=zig-out/bin DOCTBASE_ASSETS=. \
+  sh tests/e2e/install-ubuntu.sh
+
+# Matrix local/Docker (Ubuntu 24.04 + Debian 13 x86_64, Ubuntu 24.04 arm64)
+sh tests/e2e/matrix-install.sh --list
+sh tests/e2e/matrix-install.sh --dry-run
+sh tests/e2e/matrix-install.sh --backend docker
+```
+
+`matrix-install.sh` dùng `tests/e2e/systemd.Dockerfile` với container privileged
+để chạy systemd. Cell arm64 cần host arm64 thật hoặc binfmt/QEMU hỗ trợ đầy đủ;
+qemu-user hiện không chạy được `LoadCredential=` của systemd, nên matrix phát
+hiện và báo cell đó là `SKIP` thay vì fail. CI matrix đầy đủ (gồm runner arm64
+native) vẫn thuộc task T136.
 
 ## Kiểm tra nhanh sau khi build
 

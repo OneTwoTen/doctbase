@@ -17,6 +17,7 @@ const preflight = @import("preflight");
 const packages = @import("install_packages");
 const users = @import("install_users");
 const secrets = @import("install_secrets");
+const bootstrap = @import("install_bootstrap");
 const postgres = @import("install_postgres");
 const pgbouncer = @import("install_pgbouncer");
 const caddy = @import("install_caddy");
@@ -449,6 +450,33 @@ fn secretsCallback(context: ?*anyopaque, options: *const install.Options, journa
         .create_secret = secretsCreate,
         .repair_permissions = secretsRepair,
     });
+    try ensureSetupMetadata(self);
+}
+
+/// Write the non-secret setup deadline once. Repair keeps an existing deadline
+/// so it cannot reopen an expired setup window.
+fn ensureSetupMetadata(self: *Host) !void {
+    if (try self.exists(bootstrap.metadata_path)) return;
+    if (!try self.exists(secrets.directory ++ "/admin_setup_token")) return;
+
+    const token = try readSecret(self, secrets.directory ++ "/admin_setup_token");
+    defer {
+        std.crypto.secureZero(u8, token);
+        self.allocator.free(token);
+    }
+    const token_hash = try bootstrap.tokenHashHex(self.allocator, token);
+    defer self.allocator.free(token_hash);
+
+    const now = std.Io.Timestamp.now(self.io, .real).toSeconds();
+    const json = try bootstrap.render(self.allocator, now, bootstrap.expiresAt(now), token_hash);
+    defer self.allocator.free(json);
+    try self.writeGenerated(
+        bootstrap.metadata_path,
+        json,
+        bootstrap.metadata_mode,
+        bootstrap.metadata_owner,
+        bootstrap.metadata_group,
+    );
 }
 
 fn secretsStat(context: ?*anyopaque, path: []const u8) anyerror!?secrets.ExistingSecret {
@@ -513,6 +541,11 @@ fn postgresqlCallback(context: ?*anyopaque, options: *const install.Options, jou
     defer self.journal = previous;
     self.postgres_config_changed = false;
 
+    // Debian/Ubuntu ship `include_dir = 'conf.d'` commented out. Without it the
+    // generated tuning/pg_hba fragment is ignored and PostgreSQL falls back to
+    // the packaged defaults (including a localhost TCP listener).
+    try ensurePostgresIncludeDir(self);
+
     const tuning_template_path = try self.assetPath("infrastructure/postgres/tuning.conf");
     defer self.allocator.free(tuning_template_path);
     const bootstrap_template_path = try self.assetPath("infrastructure/postgres/template.sql");
@@ -520,8 +553,8 @@ fn postgresqlCallback(context: ?*anyopaque, options: *const install.Options, jou
 
     const tuning = try std.Io.Dir.cwd().readFileAlloc(self.io, tuning_template_path, self.allocator, .limited(256 * 1024));
     defer self.allocator.free(tuning);
-    const bootstrap = try std.Io.Dir.cwd().readFileAlloc(self.io, bootstrap_template_path, self.allocator, .limited(1024 * 1024));
-    defer self.allocator.free(bootstrap);
+    const bootstrap_sql = try std.Io.Dir.cwd().readFileAlloc(self.io, bootstrap_template_path, self.allocator, .limited(1024 * 1024));
+    defer self.allocator.free(bootstrap_sql);
 
     const admin_password = try readSecret(self, "/etc/doctbase/secrets/postgres_admin");
     defer {
@@ -546,7 +579,7 @@ fn postgresqlCallback(context: ?*anyopaque, options: *const install.Options, jou
         .ram_bytes = 2 * 1024 * 1024 * 1024,
         .max_connections = 200,
         .tuning_template = tuning,
-        .bootstrap_template = bootstrap,
+        .bootstrap_template = bootstrap_sql,
         .admin_password = admin_password,
         .pgbouncer_password = pgbouncer_password,
     });
@@ -587,7 +620,32 @@ fn postgresCreateCluster(context: ?*anyopaque, spec: postgres.ClusterSpec) anyer
         "5433",
         "--start-conf=manual",
     });
+    try ensurePostgresIncludeDir(self);
     try self.record(.{ .cluster = try self.allocator.dupe(u8, spec.name) });
+}
+
+fn ensurePostgresIncludeDir(self: *Host) !void {
+    const path = postgres.config_directory ++ "/postgresql.conf";
+    const existing = (try self.readOptional(path)) orelse return;
+    defer self.allocator.free(existing);
+    if (hasActiveDirective(existing, "include_dir")) return;
+
+    const updated = try std.fmt.allocPrint(self.allocator, "{s}\ninclude_dir = 'conf.d'\n", .{existing});
+    defer self.allocator.free(updated);
+    try self.writeGenerated(path, updated, 0o644, "postgres", "postgres");
+    self.postgres_config_changed = true;
+}
+
+pub fn hasActiveDirective(contents: []const u8, name: []const u8) bool {
+    var lines = std.mem.splitScalar(u8, contents, '\n');
+    while (lines.next()) |raw_line| {
+        const line = std.mem.trim(u8, raw_line, " \t\r");
+        if (line.len == 0 or line[0] == '#') continue;
+        if (!std.mem.startsWith(u8, line, name)) continue;
+        const rest = std.mem.trimStart(u8, line[name.len..], " \t");
+        if (rest.len != 0 and rest[0] == '=') return true;
+    }
+    return false;
 }
 
 fn postgresWriteFile(context: ?*anyopaque, file: postgres.FileSpec) anyerror!void {
@@ -860,4 +918,11 @@ fn rollbackCallback(context: ?*anyopaque, receipt: state.Receipt) anyerror!void 
             self.run(&.{ "systemctl", "disable", name }) catch {};
         },
     }
+}
+
+test "postgres include_dir detection ignores comments and matches assignments" {
+    try std.testing.expect(!hasActiveDirective("#include_dir = 'conf.d'\n", "include_dir"));
+    try std.testing.expect(hasActiveDirective("include_dir = 'conf.d'\n", "include_dir"));
+    try std.testing.expect(hasActiveDirective("work_mem = 4MB\ninclude_dir='conf.d'\n", "include_dir"));
+    try std.testing.expect(!hasActiveDirective("include_directory = 'x'\n", "include_dir"));
 }

@@ -7,6 +7,8 @@ const core = @import("core");
 const runtime_agg = @import("../services/runtime.zig");
 const session_mod = @import("../auth/session.zig");
 const users_mod = @import("../auth/users.zig");
+const setup_mod = @import("../auth/setup.zig");
+const setup_api = @import("setup.zig");
 
 pub const Header = struct {
     name: []const u8,
@@ -42,11 +44,6 @@ const LoginPayload = struct {
     password: []const u8 = "",
 };
 
-const LoginResponse = struct {
-    admin: AdminView,
-    expires_at: i64,
-};
-
 const SessionResponse = struct {
     admin: AdminView,
     expires_at: i64,
@@ -66,6 +63,7 @@ pub const ManagementApi = struct {
     session_store: *session_mod.SessionStore,
     users: *users_mod.UserStore,
     aggregator: *runtime_agg.ServiceRuntimeAggregator,
+    setup: ?*setup_mod.State = null,
 
     pub fn init(
         allocator: std.mem.Allocator,
@@ -74,17 +72,43 @@ pub const ManagementApi = struct {
         users: *users_mod.UserStore,
         aggregator: *runtime_agg.ServiceRuntimeAggregator,
     ) ManagementApi {
+        return initWithSetup(allocator, io, session_store, users, aggregator, null);
+    }
+
+    pub fn initWithSetup(
+        allocator: std.mem.Allocator,
+        io: std.Io,
+        session_store: *session_mod.SessionStore,
+        users: *users_mod.UserStore,
+        aggregator: *runtime_agg.ServiceRuntimeAggregator,
+        setup: ?*setup_mod.State,
+    ) ManagementApi {
         return .{
             .allocator = allocator,
             .io = io,
             .session_store = session_store,
             .users = users,
             .aggregator = aggregator,
+            .setup = setup,
         };
     }
 
     pub fn handle(self: *ManagementApi, req: Request) !HttpResponse {
         const req_id = req.request_id orelse "-";
+
+        if (std.mem.eql(u8, req.path, "/api/v1/setup/status") or std.mem.eql(u8, req.path, "/setup/status")) {
+            if (!std.mem.eql(u8, req.method, "GET")) {
+                return self.problemResponse(405, .not_found, "Method not allowed", req_id);
+            }
+            return self.handleSetupStatus(req_id);
+        }
+
+        if (std.mem.eql(u8, req.path, "/api/v1/setup") or std.mem.eql(u8, req.path, "/setup")) {
+            if (!std.mem.eql(u8, req.method, "POST")) {
+                return self.problemResponse(405, .not_found, "Method not allowed", req_id);
+            }
+            return self.handleSetup(req, req_id);
+        }
 
         if (std.mem.eql(u8, req.path, "/api/v1/auth/login") or std.mem.eql(u8, req.path, "/auth/login")) {
             if (!std.mem.eql(u8, req.method, "POST")) {
@@ -180,6 +204,17 @@ pub const ManagementApi = struct {
         };
         defer created.deinit(self.allocator);
 
+        return self.sessionResponse(200, user.id, user.email, user.role, created);
+    }
+
+    fn sessionResponse(
+        self: *ManagementApi,
+        status: u16,
+        user_id: []const u8,
+        email: []const u8,
+        role: session_mod.Role,
+        created: session_mod.NewSession,
+    ) !HttpResponse {
         const max_age = @max(@as(i64, 0), created.expires_at - nowSeconds(self.io));
         const session_cookie = try self.session_store.buildSessionCookie(
             self.allocator,
@@ -206,20 +241,85 @@ pub const ManagementApi = struct {
 
         var buf = std.Io.Writer.Allocating.init(self.allocator);
         defer buf.deinit();
-        try std.json.Stringify.value(LoginResponse{
+        try std.json.Stringify.value(SessionResponse{
             .admin = .{
-                .id = user.id,
-                .email = user.email,
-                .role = @tagName(user.role),
+                .id = user_id,
+                .email = email,
+                .role = @tagName(role),
             },
             .expires_at = created.expires_at,
         }, .{}, &buf.writer);
 
         return .{
-            .status = 200,
+            .status = status,
             .body = try self.allocator.dupe(u8, buf.written()),
             .headers = headers,
         };
+    }
+
+    fn handleSetupStatus(self: *ManagementApi, request_id: []const u8) !HttpResponse {
+        _ = request_id;
+        const state = self.setup orelse {
+            return self.writeSetupStatus(false, false, false);
+        };
+        const status = state.status(self.users.count(), nowSeconds(self.io));
+        return self.writeSetupStatus(status.required, status.expired, status.available);
+    }
+
+    fn writeSetupStatus(self: *ManagementApi, required: bool, expired: bool, available: bool) !HttpResponse {
+        var buf = std.Io.Writer.Allocating.init(self.allocator);
+        defer buf.deinit();
+        try buf.writer.print(
+            "{{\"required\":{s},\"expired\":{s},\"available\":{s}}}",
+            .{
+                if (required) "true" else "false",
+                if (expired) "true" else "false",
+                if (available) "true" else "false",
+            },
+        );
+        return .{
+            .status = 200,
+            .body = try self.allocator.dupe(u8, buf.written()),
+        };
+    }
+
+    fn handleSetup(self: *ManagementApi, req: Request, request_id: []const u8) !HttpResponse {
+        const state = self.setup orelse {
+            return self.authProblem(503, .setup_unavailable, "Admin setup is not configured", request_id);
+        };
+
+        if (req.content_type) |content_type| {
+            if (!std.mem.startsWith(u8, content_type, "application/json")) {
+                return self.authProblem(400, .bad_request, "Setup requires application/json", request_id);
+            }
+        }
+        const raw_body = req.body orelse {
+            return self.authProblem(400, .bad_request, "Missing setup request body", request_id);
+        };
+
+        var parsed = setup_api.parse(self.allocator, raw_body) catch |err| {
+            return self.authProblem(400, .bad_request, @errorName(err), request_id);
+        };
+        defer parsed.deinit();
+
+        const user = setup_api.complete(state, self.users, parsed.value, nowSeconds(self.io)) catch |err| {
+            return switch (err) {
+                error.SetupTokenInvalid => self.authProblem(400, .setup_token_invalid, "Invalid setup token", request_id),
+                error.SetupTokenExpired => self.authProblem(400, .setup_token_expired, "Setup token expired", request_id),
+                error.SetupCompleted => self.authProblem(409, .setup_completed, "Admin setup already completed", request_id),
+                error.SetupUnavailable => self.authProblem(503, .setup_unavailable, "Admin setup is not configured", request_id),
+                error.InvalidEmail => self.authProblem(400, .bad_request, "Invalid email address", request_id),
+                error.PasswordTooShort => self.authProblem(400, .bad_request, "Password must be at least 12 characters", request_id),
+                else => self.authProblem(500, .internal, @errorName(err), request_id),
+            };
+        };
+
+        var created = self.session_store.createSession(user.id, user.role) catch |err| {
+            return self.authProblem(500, .internal, @errorName(err), request_id);
+        };
+        defer created.deinit(self.allocator);
+
+        return self.sessionResponse(201, user.id, user.email, user.role, created);
     }
 
     fn handleLogout(self: *ManagementApi, req: Request, request_id: []const u8) !HttpResponse {
@@ -456,6 +556,100 @@ fn serializeServiceState(writer: anytype, state: driver_mod.RuntimeState) !void 
         state.last_error,
         state.last_check_at,
     });
+}
+
+test "setup creates the owner once and then closes" {
+    const allocator = std.testing.allocator;
+    const io = std.testing.io;
+
+    var fake = lifecycle.fake.FakeDriver.init();
+    var store = session_mod.SessionStore.init(allocator, io, null);
+    defer store.deinit();
+    var users = users_mod.UserStore.init(allocator, io);
+    defer users.deinit();
+    var setup = try setup_mod.State.initFromToken(allocator, io, "setup-token", 4_000_000_000);
+    var agg = runtime_agg.ServiceRuntimeAggregator.init(allocator, io, fake.driver(), .{});
+    defer agg.deinit();
+
+    var api = ManagementApi.initWithSetup(allocator, io, &store, &users, &agg, &setup);
+
+    const status = try api.handle(.{ .method = "GET", .path = "/setup/status" });
+    defer status.deinit(allocator);
+    try std.testing.expectEqual(@as(u16, 200), status.status);
+    try std.testing.expect(std.mem.indexOf(u8, status.body, "\"required\":true") != null);
+
+    const created = try api.handle(.{
+        .method = "POST",
+        .path = "/setup",
+        .content_type = "application/json",
+        .body = "{\"setup_token\":\"setup-token\",\"email\":\"owner@example.com\",\"password\":\"correct-horse-battery\"}",
+        .request_id = "req-setup",
+    });
+    defer created.deinit(allocator);
+    try std.testing.expectEqual(@as(u16, 201), created.status);
+    try std.testing.expect(std.mem.indexOf(u8, created.body, "\"role\":\"owner\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, created.body, "correct-horse-battery") == null);
+
+    const after = try api.handle(.{ .method = "GET", .path = "/setup/status" });
+    defer after.deinit(allocator);
+    try std.testing.expect(std.mem.indexOf(u8, after.body, "\"required\":false") != null);
+
+    const duplicate = try api.handle(.{
+        .method = "POST",
+        .path = "/setup",
+        .content_type = "application/json",
+        .body = "{\"setup_token\":\"setup-token\",\"email\":\"other@example.com\",\"password\":\"correct-horse-battery\"}",
+        .request_id = "req-setup-2",
+    });
+    defer duplicate.deinit(allocator);
+    try std.testing.expectEqual(@as(u16, 409), duplicate.status);
+    try std.testing.expect(std.mem.indexOf(u8, duplicate.body, "SETUP_COMPLETED") != null);
+
+    const login = try api.handle(.{
+        .method = "POST",
+        .path = "/auth/login",
+        .body = "{\"email\":\"owner@example.com\",\"password\":\"correct-horse-battery\"}",
+        .request_id = "req-login-setup",
+    });
+    defer login.deinit(allocator);
+    try std.testing.expectEqual(@as(u16, 200), login.status);
+}
+
+test "setup rejects invalid and expired tokens" {
+    const allocator = std.testing.allocator;
+    const io = std.testing.io;
+
+    var fake = lifecycle.fake.FakeDriver.init();
+    var store = session_mod.SessionStore.init(allocator, io, null);
+    defer store.deinit();
+    var users = users_mod.UserStore.init(allocator, io);
+    defer users.deinit();
+    var setup = try setup_mod.State.initFromToken(allocator, io, "setup-token", 10);
+    var agg = runtime_agg.ServiceRuntimeAggregator.init(allocator, io, fake.driver(), .{});
+    defer agg.deinit();
+    var api = ManagementApi.initWithSetup(allocator, io, &store, &users, &agg, &setup);
+
+    const wrong = try api.handle(.{
+        .method = "POST",
+        .path = "/setup",
+        .content_type = "application/json",
+        .body = "{\"setup_token\":\"wrong\",\"email\":\"owner@example.com\",\"password\":\"correct-horse-battery\"}",
+        .request_id = "req-setup-wrong",
+    });
+    defer wrong.deinit(allocator);
+    try std.testing.expectEqual(@as(u16, 400), wrong.status);
+    try std.testing.expect(std.mem.indexOf(u8, wrong.body, "SETUP_TOKEN_INVALID") != null);
+
+    const expired = try api.handle(.{
+        .method = "POST",
+        .path = "/setup",
+        .content_type = "application/json",
+        .body = "{\"setup_token\":\"setup-token\",\"email\":\"owner@example.com\",\"password\":\"correct-horse-battery\"}",
+        .request_id = "req-setup-expired",
+    });
+    defer expired.deinit(allocator);
+    try std.testing.expectEqual(@as(u16, 400), expired.status);
+    try std.testing.expect(std.mem.indexOf(u8, expired.body, "SETUP_TOKEN_EXPIRED") != null);
 }
 
 test "management api requires auth for service listing" {

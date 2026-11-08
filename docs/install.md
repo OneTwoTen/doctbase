@@ -5,10 +5,9 @@ Ubuntu 24.04/26.04 (x86_64/arm64). Đây là golden path native; Docker/Coolify 
 đường tùy chọn và có tài liệu riêng.
 
 > **Trạng thái slice hiện tại**: orchestration, state file, lock, rollback,
-> health verification, summary, `repair`, `uninstall` và đường Docker
-> `init --profile docker`/`up` đã có. Bootstrap admin/setup token trong
-> Management API (task T050), `project create` (US2) và bootstrap script release
-> có chữ ký (T053) vẫn là các slice tiếp theo.
+> health verification, summary, `repair`, `uninstall`, admin setup token
+> (T050), signed bootstrap installer (T053) và đường Docker
+> `init --profile docker`/`up` đã có. `project create` (US2) là slice tiếp theo.
 
 ## Điều kiện
 
@@ -31,7 +30,32 @@ user, không cài package.
 
 ## Cài đặt
 
-Với gói release (asset mặc định nằm dưới
+### Một lệnh (release)
+
+```sh
+curl -fsSL https://get.doctbase.dev | sudo sh -s -- \
+  --domain example.com --email admin@example.com --yes
+```
+
+Bootstrap tải manifest đã ký, xác minh chữ ký Ed25519 và SHA-256 của artifact,
+giải nén, cài CLI rồi chạy `doctbase install`. Public key release được truyền
+qua `--pubkey`/`DOCTBASE_RELEASE_PUBKEY_FILE`; release pipeline chịu trách nhiệm
+ký manifest (T140/T141). Với chế độ audit hai bước:
+
+```sh
+curl -fsSL https://get.doctbase.dev/install.sh -o install.sh
+less install.sh
+sudo sh install.sh --domain example.com --email admin@example.com --yes
+```
+
+Có thể kiểm tra trước mà không thay đổi host:
+
+```sh
+sh install.sh --manifest /path/manifest.json --artifact /path/bundle.tar.gz \
+  --pubkey /path/release-pub.pem --dry-run
+```
+
+Với gói release đã cài sẵn (asset mặc định nằm dưới
 `/usr/local/lib/doctbase/current/share`, binary dưới
 `/usr/local/lib/doctbase/current/bin`):
 
@@ -87,6 +111,25 @@ State: /var/lib/doctbase/state.json
 - Dashboard: `https://admin.<domain>/` khi có domain.
 - Local mode: dùng SSH tunnel tới `/run/doctbase/management.sock`.
 - Không lệnh nào in giá trị secret.
+
+## Tạo admin bằng setup token
+
+Installer sinh `admin_setup_token` (256-bit, hết hạn sau 30 phút) và một file
+metadata không chứa secret tại `/var/lib/doctbase/control/setup.json` (chỉ hash
+SHA-256 + deadline). Management đọc hash này, nên token dùng một lần và không bị
+mở lại sau restart. Sau khi admin tồn tại, setup đóng vĩnh viễn.
+
+- Có domain: mở `https://admin.<domain>/setup`, nhập token đọc bằng root từ
+  `/etc/doctbase/secrets/admin_setup_token`, email và password ≥ 12 ký tự.
+- Local mode: dùng SSH tunnel tới management socket rồi gọi `POST /setup` (xem
+  `tests/e2e/install-ubuntu.sh` để biết ví dụ curl), hoặc chờ dashboard setup
+  page ở slice US2.
+- Token hết hạn: chạy lại `doctbase repair --yes` **không** gia hạn token cũ;
+  dùng `doctbase admin reset-setup` khi command này được bổ sung (T135).
+
+Admin hiện được lưu tại `/var/lib/doctbase/control/admin.json` (Argon2id,
+mode `0600`) cho tới khi repository control DB thay thế; không có mật khẩu mặc
+định và không ghi secret vào log.
 
 ## Idempotency, resume và rollback
 
@@ -220,10 +263,9 @@ này không trộn file compose với nhau.
 
 ## Giới hạn hiện tại
 
-- `deploy/native/install.sh` vẫn là placeholder; one-line native cần release
-  bootstrap có chữ ký (T053).
-- Chưa có setup flow/admin bootstrap trong Management API; setup token đã được
-  sinh nhưng chưa có endpoint xác thực.
+- Chưa publish release artifacts/manifest có chữ ký tại `get.doctbase.dev`
+  (T140/T141); bootstrap đã hỗ trợ manifest local và remote.
+- Admin store dùng file JSON tạm thời; control DB repository sẽ thay thế.
 - Chưa có `project create` và external database/proxy mode.
 - Docker standalone cần ảnh `doctbase/*` đã publish; chưa có E2E pull từ
   registry trong repo này.

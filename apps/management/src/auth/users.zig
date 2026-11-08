@@ -24,12 +24,29 @@ pub const AdminUser = struct {
     }
 };
 
-/// In-memory admin user store for the management plane. The control database
-/// (T026/T027) will replace this behind the same lookup/verify contract.
+const PersistedUser = struct {
+    id: []const u8,
+    email: []const u8,
+    password_hash: []const u8,
+    role: []const u8,
+    status: []const u8,
+};
+
+const PersistedStore = struct {
+    users: []const PersistedUser,
+};
+
+/// Admin user store for the management plane. The control database
+/// (T026/T027) will replace the optional JSON persistence behind the same
+/// lookup/verify contract; the in-memory mode remains for tests.
 pub const UserStore = struct {
     allocator: std.mem.Allocator,
     io: std.Io,
     users: std.StringHashMap(AdminUser),
+    /// Optional JSON persistence path. `null` keeps the store in-memory for
+    /// tests; production management uses a 0600 file until the control database
+    /// repository replaces it behind the same contract.
+    path: ?[]u8 = null,
 
     pub fn init(allocator: std.mem.Allocator, io: std.Io) UserStore {
         return .{
@@ -39,6 +56,31 @@ pub const UserStore = struct {
         };
     }
 
+    pub fn initPersistent(allocator: std.mem.Allocator, io: std.Io, path: []const u8) !UserStore {
+        var store = UserStore.init(allocator, io);
+        errdefer store.deinit();
+        store.path = try allocator.dupe(u8, path);
+
+        const contents = std.Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(4 * 1024 * 1024)) catch |err| switch (err) {
+            error.FileNotFound => return store,
+            else => return err,
+        };
+        defer allocator.free(contents);
+
+        var parsed = std.json.parseFromSlice(PersistedStore, allocator, contents, .{
+            .ignore_unknown_fields = true,
+            .allocate = .alloc_always,
+        }) catch return error.InvalidAdminStore;
+        defer parsed.deinit();
+
+        for (parsed.value.users) |user| {
+            const role = std.meta.stringToEnum(session_mod.Role, user.role) orelse return error.InvalidAdminStore;
+            const status = std.meta.stringToEnum(UserStatus, user.status) orelse return error.InvalidAdminStore;
+            try store.putUser(user.id, user.email, user.password_hash, role, status);
+        }
+        return store;
+    }
+
     pub fn deinit(self: *UserStore) void {
         var it = self.users.iterator();
         while (it.next()) |entry| {
@@ -46,6 +88,15 @@ pub const UserStore = struct {
             entry.value_ptr.deinit(self.allocator);
         }
         self.users.deinit();
+        if (self.path) |path| self.allocator.free(path);
+    }
+
+    pub fn count(self: *const UserStore) usize {
+        return self.users.count();
+    }
+
+    pub fn hasUsers(self: *const UserStore) bool {
+        return self.users.count() != 0;
     }
 
     pub fn addUser(
@@ -68,6 +119,18 @@ pub const UserStore = struct {
         role: session_mod.Role,
         status: UserStatus,
     ) !void {
+        try self.putUser(null, email, password_hash, role, status);
+        try self.persist();
+    }
+
+    fn putUser(
+        self: *UserStore,
+        id: ?[]const u8,
+        email: []const u8,
+        password_hash: []const u8,
+        role: session_mod.Role,
+        status: UserStatus,
+    ) !void {
         const normalized = try normalizeEmail(self.allocator, email);
         errdefer self.allocator.free(normalized);
 
@@ -79,18 +142,52 @@ pub const UserStore = struct {
         const hash_copy = try self.allocator.dupe(u8, password_hash);
         errdefer self.allocator.free(hash_copy);
 
-        const now = std.Io.Timestamp.now(self.io, .real).toMilliseconds();
-        const ulid = security.ids.generateUlid(self.io, now);
-        const id = try self.allocator.dupe(u8, ulid[0..]);
-        errdefer self.allocator.free(id);
+        const id_copy = if (id) |value|
+            try self.allocator.dupe(u8, value)
+        else blk: {
+            const now = std.Io.Timestamp.now(self.io, .real).toMilliseconds();
+            const ulid = security.ids.generateUlid(self.io, now);
+            break :blk try self.allocator.dupe(u8, ulid[0..]);
+        };
+        errdefer self.allocator.free(id_copy);
 
         try self.users.put(normalized, .{
-            .id = id,
+            .id = id_copy,
             .email = email_copy,
             .password_hash = hash_copy,
             .role = role,
             .status = status,
         });
+    }
+
+    fn persist(self: *UserStore) !void {
+        const path = self.path orelse return;
+
+        var list: std.ArrayList(PersistedUser) = .empty;
+        defer list.deinit(self.allocator);
+        var it = self.users.iterator();
+        while (it.next()) |entry| {
+            try list.append(self.allocator, .{
+                .id = entry.value_ptr.id,
+                .email = entry.value_ptr.email,
+                .password_hash = entry.value_ptr.password_hash,
+                .role = @tagName(entry.value_ptr.role),
+                .status = @tagName(entry.value_ptr.status),
+            });
+        }
+
+        const json = try std.json.Stringify.valueAlloc(self.allocator, PersistedStore{ .users = list.items }, .{ .whitespace = .indent_2 });
+        defer self.allocator.free(json);
+
+        var atomic = try std.Io.Dir.cwd().createFileAtomic(self.io, path, .{
+            .permissions = std.Io.File.Permissions.fromMode(0o600),
+            .make_path = true,
+            .replace = true,
+        });
+        defer atomic.deinit(self.io);
+        try atomic.file.writeStreamingAll(self.io, json);
+        try atomic.file.writeStreamingAll(self.io, "\n");
+        try atomic.replace(self.io);
     }
 
     /// Returns an active user only when the password verifies. Unknown,
@@ -160,6 +257,30 @@ test "user store adds users, rejects weak passwords and verifies argon2id hashes
         error.DuplicateEmail,
         store.addUserWithHash("ADMIN@example.com", "unused-hash", .viewer, .active),
     );
+}
+
+test "persistent user store survives a reload" {
+    const allocator = std.testing.allocator;
+    const io = std.testing.io;
+
+    var temporary = std.testing.tmpDir(.{});
+    defer temporary.cleanup();
+    var path_buffer: [std.fs.max_path_bytes]u8 = undefined;
+    const length = try temporary.dir.realPath(io, &path_buffer);
+    const path = try std.fmt.allocPrint(allocator, "{s}/admin.json", .{path_buffer[0..length]});
+    defer allocator.free(path);
+
+    var store = try UserStore.initPersistent(allocator, io, path);
+    defer store.deinit();
+    try store.addUser("Owner@Example.com", "correct-horse-battery", .owner);
+
+    var reloaded = try UserStore.initPersistent(allocator, io, path);
+    defer reloaded.deinit();
+
+    try std.testing.expectEqual(@as(usize, 1), reloaded.count());
+    const user = reloaded.verifyCredentials("owner@example.com", "correct-horse-battery") orelse return error.TestExpectedUser;
+    try std.testing.expectEqual(session_mod.Role.owner, user.role);
+    try std.testing.expect(reloaded.verifyCredentials("owner@example.com", "wrong-password") == null);
 }
 
 test "disabled user cannot authenticate" {

@@ -57,6 +57,9 @@ jobs:
       - name: Test
         run: zig build test --summary all
 
+      - name: Bootstrap installer smoke test
+        run: sh tests/e2e/bootstrap-install.sh
+
       - name: Cross-build (aarch64-linux)
         run: zig build -Dtarget=aarch64-linux-gnu --summary all
 

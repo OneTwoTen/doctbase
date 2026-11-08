@@ -21,18 +21,22 @@ pub const Code = enum {
     service_not_found,
     service_not_restartable,
     service_operation_in_progress,
+    setup_token_invalid,
+    setup_token_expired,
+    setup_completed,
+    setup_unavailable,
 
     pub fn httpStatus(self: Code) u16 {
         return switch (self) {
             .internal => 500,
             .config_not_found, .not_found, .service_not_found => 404,
             .config_invalid => 422,
-            .bad_request => 400,
+            .bad_request, .setup_token_invalid, .setup_token_expired => 400,
             .socket_bind_failed, .socket_in_use, .socket_permission_denied => 503,
             .internal_auth_failed, .unauthorized, .invalid_credentials => 401,
             .forbidden, .csrf_invalid, .service_not_restartable => 403,
-            .conflict, .service_operation_in_progress => 409,
-            .service_init_failed, .shutdown_timeout, .health_not_ready => 503,
+            .conflict, .service_operation_in_progress, .setup_completed => 409,
+            .service_init_failed, .shutdown_timeout, .health_not_ready, .setup_unavailable => 503,
         };
     }
 
@@ -58,6 +62,10 @@ pub const Code = enum {
             .service_not_found => "Service not found",
             .service_not_restartable => "Service cannot be restarted",
             .service_operation_in_progress => "Service operation already in progress",
+            .setup_token_invalid => "Invalid setup token",
+            .setup_token_expired => "Setup token expired",
+            .setup_completed => "Admin setup already completed",
+            .setup_unavailable => "Admin setup is unavailable",
         };
     }
 
@@ -83,6 +91,10 @@ pub const Code = enum {
             .service_not_found => "Specify a valid service name from `doctbase status`",
             .service_not_restartable => "Infrastructure services must be restarted manually via CLI",
             .service_operation_in_progress => "Wait for the current operation to finish",
+            .setup_token_invalid => "Open the setup link from the installer and retry",
+            .setup_token_expired => "Run `doctbase admin reset-setup` to create a new token",
+            .setup_completed => "Log in with the existing admin account",
+            .setup_unavailable => "Re-run `doctbase install` or create a setup token",
         };
     }
 
@@ -108,6 +120,10 @@ pub const Code = enum {
             .service_not_found => "SERVICE_NOT_FOUND",
             .service_not_restartable => "SERVICE_NOT_RESTARTABLE",
             .service_operation_in_progress => "SERVICE_OPERATION_IN_PROGRESS",
+            .setup_token_invalid => "SETUP_TOKEN_INVALID",
+            .setup_token_expired => "SETUP_TOKEN_EXPIRED",
+            .setup_completed => "SETUP_COMPLETED",
+            .setup_unavailable => "SETUP_UNAVAILABLE",
         };
     }
 

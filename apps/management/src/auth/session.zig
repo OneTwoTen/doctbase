@@ -51,11 +51,11 @@ pub const AuthContext = struct {
     expires_at: i64 = 0,
     csrf_hash: ?[32]u8 = null,
 
-    pub fn userId(self: AuthContext) []const u8 {
+    pub fn userId(self: *const AuthContext) []const u8 {
         return self.user_id_buf[0..self.user_id_len];
     }
 
-    pub fn sessionId(self: AuthContext) []const u8 {
+    pub fn sessionId(self: *const AuthContext) []const u8 {
         return self.session_id_buf[0..self.session_id_len];
     }
 

@@ -10,21 +10,32 @@ Yêu cầu: Debian 13 hoặc Ubuntu 24.04/26.04, x86_64/arm64, 2 GiB RAM, 20 GiB
 trống, quyền root. Domain và email TLS là tùy chọn.
 
 ```sh
-# Xem kế hoạch, không thay đổi host
+# Một lệnh từ release (manifest + artifact có chữ ký)
+curl -fsSL https://get.doctbase.dev | sudo sh -s -- \
+  --domain example.com --email admin@example.com --yes
+
+# Hoặc CLI đã cài sẵn
 sudo doctbase install --domain example.com --email admin@example.com --dry-run
-
-# Cài thật
 sudo doctbase install --domain example.com --email admin@example.com --yes
-
-# Không domain: chỉ truy cập qua SSH tunnel
-sudo doctbase install --yes
+sudo doctbase install --yes    # local mode, dùng SSH tunnel
 ```
 
 Kết quả cuối có URL dashboard (hoặc hướng dẫn SSH tunnel), health gateway và
 management, đường dẫn config, setup token và log. Không lệnh nào in giá trị
 secret.
 
-## 2. Kiểm tra và repair
+## 2. Tạo admin
+
+```sh
+sudo cat /etc/doctbase/secrets/admin_setup_token   # chỉ đọc một lần
+```
+
+Mở `https://admin.<domain>/setup` (hoặc gọi `POST /setup` qua SSH tunnel tới
+`/run/doctbase/management.sock` trong local mode), nhập token, email và password
+≥ 12 ký tự. Token hết hạn sau 30 phút và chỉ dùng một lần; không có mật khẩu mặc
+định.
+
+## 3. Kiểm tra và repair
 
 ```sh
 sudo doctbase status
@@ -43,7 +54,7 @@ generated và khởi động lại service còn thiếu. Chạy `repair` khi:
 Repair yêu cầu state `/var/lib/doctbase/state.json` đã tồn tại. Host chưa cài
 phải dùng `doctbase install`.
 
-## 3. Gỡ cài đặt
+## 4. Gỡ cài đặt
 
 ```sh
 sudo doctbase uninstall --dry-run
@@ -51,7 +62,7 @@ sudo doctbase uninstall --yes            # giữ config + data để cài lại
 sudo doctbase uninstall --purge          # gõ đúng "purge"; xóa toàn bộ data
 ```
 
-## 4. Docker (tùy chọn)
+## 5. Docker (tùy chọn)
 
 Docker cần Docker Engine + Compose v2. Đường Docker độc lập dùng Caddy công
 khai 80/443; các service lõi chỉ `expose` trong mạng Compose.
@@ -86,7 +97,7 @@ không bao giờ ghi đè secret đã sinh. `up` gọi
 Ảnh `doctbase/*` phải được publish ở registry (release bundle); trong repo,
 `deploy/docker/install.sh` dùng binary `doctbase` và template local.
 
-## 5. Phát triển
+## 6. Phát triển
 
 Cài Zig theo `.zigversion`, build và chạy vài service foreground:
 
