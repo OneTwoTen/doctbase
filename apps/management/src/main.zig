@@ -28,6 +28,7 @@ pub fn main(init: std.process.Init) !void {
         .environ = environment,
         .driver = driver,
         .admin_path = environment.get("DOCTBASE_ADMIN_DB") orelse "/var/lib/doctbase/control/admin.json",
+        .dashboard_dir = if (std.mem.eql(u8, mode, "docker")) "/opt/doctbase/dashboard" else null,
         .cookie_secure = !std.mem.eql(u8, environment.get("DOCTBASE_INSECURE_COOKIES") orelse "0", "1"),
     });
     defer app.deinit();

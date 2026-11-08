@@ -14,6 +14,11 @@
 See [Coolify deployment](coolify.md) for compose profiles, health checks, and
 common proxy or database configuration issues.
 
+For a management-domain 404, verify that the domain targets `management` on
+port 8081 at `/`, then redeploy an image built from the dashboard-serving
+commit. A missing API route under `/api/v1` should remain a JSON 404; if it
+returns dashboard HTML, roll back and inspect the management route boundary.
+
 Native installation diagnostics will be added when the installer and `doctor`
 commands are implemented.
 

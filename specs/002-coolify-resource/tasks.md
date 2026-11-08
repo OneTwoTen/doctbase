@@ -60,6 +60,18 @@
 - [x] T031 Chạy CI đầy đủ (2 job hiện có + job compose) và xác nhận xanh
 - [x] T032 Mở PR stacked lên `ci/build-test-docker-dev`, link PR, ghi rõ giới hạn slice
 
+## Phase 8: Dashboard cho management (US1)
+
+- [x] T033 [US1] Cập nhật `specs/002-coolify-resource/spec.md` với acceptance scenario cho dashboard root, deep-link, JSON API 404 và chống traversal
+- [x] T034 [US1] Cập nhật `specs/002-coolify-resource/plan.md` về static bundle management-only, route boundary, security review và rollback
+- [x] T035 [P] [US1] Tạo `dashboard/package-lock.json` và xác nhận `npm ci`, `npm run check`, `npm run build` tạo static fallback
+- [x] T036 [US1] Thêm `apps/management/src/dashboard.zig` để phục vụ GET/HEAD, MIME, SPA fallback giới hạn và từ chối path traversal; unit test cả alias `/auth` và `/services`, reserved route, root, asset, deep-link và file không tồn tại
+- [x] T037 [US1] Nối dashboard handler vào `apps/management/src/app.zig` và `apps/management/src/main.zig` chỉ trong Docker mode; giữ unknown API JSON 404 và native/systemd behavior
+- [x] T038 [US1] Thêm target `management` trong `deploy/docker/Dockerfile`, chọn target đó trong `deploy/docker/compose.yml`, chỉ copy bundle vào image management
+- [x] T039 [US1] Mở rộng `.github/workflows/ci.yml` smoke test root HTML, asset MIME, deep-link fallback, API JSON 404, path traversal và xác nhận image gateway không chứa dashboard
+- [x] T040 [P] [US1] Cập nhật `docs/coolify.md` và `docs/troubleshooting.md` cách gán domain management, kiểm tra dashboard và rollback image
+- [x] T041 Chạy npm check/build, `zig fmt`, `zig build test`, compose config và image smoke test; kết quả: npm check/build đạt (có cảnh báo Rollup), Zig fmt đạt, 193/193 Zig tests, compose default/bundled/optional hợp lệ, build hai image đạt, smoke root/assets/deep-link/API 404/traversal/image boundary đạt.
+
 ## Dependencies
 
 - T004 → T005 → T006 → T007/T008 → T009
@@ -68,9 +80,12 @@
 - T022 → T023 → T024
 - T025 → T026 → T027
 - Tất cả → T028 → T029 → T030 → T031 → T032
+- T033 → T034 → T035/T036 → T037 → T038 → T039 → T041
+- T040 có thể chạy song song sau T034; T040 → T041
 
 ## Constitution Check (mỗi task)
 
 - Principle III/IV: không thêm service bắt buộc, native không đổi, mọi biến có default (trừ DB ngoài/domain).
 - Principle V: không publish DB, secret sinh tự động, image non-root.
 - Principle VII: test trước/ cùng implementation cho TCP listener và compose.
+- Dashboard security: fallback không áp dụng cho `/api`, `/setup`, health/metrics/internal; unknown API giữ JSON 404; asset path không thể thoát khỏi bundle; chỉ management image chứa static files.
