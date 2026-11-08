@@ -21,7 +21,7 @@ name: doctbase
 services:
   gateway:
     build:
-      context: ../..
+      context: .
       dockerfile: deploy/docker/Dockerfile
       args:
         SERVICE: gateway
@@ -56,7 +56,7 @@ services:
 
   management:
     build:
-      context: ../..
+      context: .
       dockerfile: deploy/docker/Dockerfile
       args:
         SERVICE: management
@@ -93,7 +93,7 @@ services:
   auth:
     profiles: ["optional"]
     build:
-      context: ../..
+      context: .
       dockerfile: deploy/docker/Dockerfile
       args:
         SERVICE: auth

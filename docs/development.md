@@ -56,14 +56,14 @@ Image production nằm trong [`deploy/docker/Dockerfile`](../deploy/docker/Docke
 
 ```bash
 # Validate cấu hình và các profile
-docker compose -f deploy/docker/compose.yml config -q
-docker compose -f deploy/docker/compose.yml --profile bundled config -q
-docker compose -f deploy/docker/compose.yml --profile optional config -q
+docker compose --project-directory . -f deploy/docker/compose.yml config -q
+docker compose --project-directory . -f deploy/docker/compose.yml --profile bundled config -q
+docker compose --project-directory . -f deploy/docker/compose.yml --profile optional config -q
 
 # Build và chạy thử gateway + management (cần biến trong .env.example)
 cp deploy/docker/.env.example deploy/docker/.env
-docker compose -f deploy/docker/compose.yml --env-file deploy/docker/.env up --build gateway management
-docker compose -f deploy/docker/compose.yml exec gateway curl -fsS http://127.0.0.1:8080/healthz
+docker compose --project-directory . -f deploy/docker/compose.yml --env-file deploy/docker/.env up --build gateway management
+docker compose --project-directory . -f deploy/docker/compose.yml exec gateway curl -fsS http://127.0.0.1:8080/healthz
 ```
 
 Không container nào publish cổng; proxy của Coolify/Traefik route vào cổng nội bộ. Quy trình Coolify đầy đủ: [Triển khai trên Coolify](coolify.md).
