@@ -82,17 +82,16 @@ Muốn giữ config riêng: đặt `DOCTBASE_CONFIG_MANAGED=0` và mount file c�
 ## Chạy thử cục bộ (không cần Coolify)
 
 ```sh
-cd deploy/docker
-cp .env.example .env
-docker compose --env-file .env -f compose.yml up --build gateway management
+cp deploy/docker/.env.example deploy/docker/.env
+docker compose --project-directory . --env-file deploy/docker/.env -f deploy/docker/compose.yml up --build gateway management
 ```
 
 Kiểm tra:
 
 ```sh
-docker compose -f compose.yml exec gateway curl -fsS http://127.0.0.1:8080/healthz
-docker compose -f compose.yml exec management curl -fsS http://127.0.0.1:8081/healthz
-docker compose -f compose.yml down
+docker compose --project-directory . -f deploy/docker/compose.yml exec gateway curl -fsS http://127.0.0.1:8080/healthz
+docker compose --project-directory . -f deploy/docker/compose.yml exec management curl -fsS http://127.0.0.1:8081/healthz
+docker compose --project-directory . -f deploy/docker/compose.yml down
 ```
 
 ## Giới hạn của slice hiện tại

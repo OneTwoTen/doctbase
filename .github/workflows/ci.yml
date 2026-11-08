@@ -96,7 +96,7 @@ jobs:
       - name: Validate compose profiles
         run: |
           set -euo pipefail
-          compose="docker compose -f deploy/docker/compose.yml"
+          compose="docker compose --project-directory . -f deploy/docker/compose.yml"
           $compose config -q
           $compose --profile bundled config -q
           $compose --profile optional config -q
@@ -116,12 +116,12 @@ jobs:
             --env-file deploy/docker/.env.example --profile bundled config -q
 
       - name: Build gateway and management images
-        run: docker compose -f deploy/docker/compose.yml build gateway management
+        run: docker compose --project-directory . -f deploy/docker/compose.yml build gateway management
 
       - name: Start services and wait for health
         run: |
           set -euo pipefail
-          compose="docker compose -f deploy/docker/compose.yml"
+          compose="docker compose --project-directory . -f deploy/docker/compose.yml"
           $compose up -d gateway management
           for attempt in $(seq 1 60); do
             if $compose exec -T gateway /usr/local/bin/healthcheck.sh \
@@ -139,7 +139,7 @@ jobs:
       - name: Check readiness and internal auth over TCP
         run: |
           set -euo pipefail
-          compose="docker compose -f deploy/docker/compose.yml"
+          compose="docker compose --project-directory . -f deploy/docker/compose.yml"
           $compose exec -T gateway curl -fsS http://127.0.0.1:8080/readyz
           $compose exec -T management curl -fsS http://127.0.0.1:8081/readyz
           if $compose exec -T gateway curl -fsS http://127.0.0.1:8080/internal/v1/info; then
@@ -150,13 +150,13 @@ jobs:
       - name: Assert no published ports
         run: |
           set -euo pipefail
-          docker compose -f deploy/docker/compose.yml config --format json \
+          docker compose --project-directory . -f deploy/docker/compose.yml config --format json \
             | jq -e '[.services[] | (.ports // []) | length] | add == 0'
 
       - name: Redeploy is idempotent
         run: |
           set -euo pipefail
-          compose="docker compose -f deploy/docker/compose.yml"
+          compose="docker compose --project-directory . -f deploy/docker/compose.yml"
           $compose up -d gateway management
           for attempt in $(seq 1 30); do
             if $compose exec -T gateway /usr/local/bin/healthcheck.sh \
@@ -171,7 +171,7 @@ jobs:
       - name: Optional profile does not disrupt core services
         run: |
           set -euo pipefail
-          compose="docker compose -f deploy/docker/compose.yml"
+          compose="docker compose --project-directory . -f deploy/docker/compose.yml"
           $compose --profile optional up -d auth
           for attempt in $(seq 1 30); do
             if $compose exec -T auth /usr/local/bin/healthcheck.sh; then
@@ -188,4 +188,4 @@ jobs:
 
       - name: Tear down
         if: always()
-        run: docker compose -f deploy/docker/compose.yml --profile optional down -v
+        run: docker compose --project-directory . -f deploy/docker/compose.yml --profile optional down -v
