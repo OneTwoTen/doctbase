@@ -1,7 +1,13 @@
 const std = @import("std");
 const lifecycle = @import("service_lifecycle");
 const config_cmd = @import("commands/config.zig");
+const docker_cmd = @import("commands/docker.zig");
 const install_cmd = @import("commands/install.zig");
+const install_host = @import("install_host");
+const install_mod = @import("install_orchestrator");
+const install_summary = @import("install_summary");
+const repair_cmd = @import("install/repair.zig");
+const uninstall_cmd = @import("commands/uninstall.zig");
 pub const output = @import("output.zig");
 
 var stop_requested: std.atomic.Value(bool) = .init(false);
@@ -47,6 +53,15 @@ pub fn main(init: std.process.Init) !void {
     if (std.mem.eql(u8, cmd, "install")) {
         return install_cmd.run(init, &args, globals.yes, globals.dry_run);
     }
+    if (std.mem.eql(u8, cmd, "repair")) {
+        return runRepair(init, &args, globals.yes, globals.dry_run);
+    }
+    if (std.mem.eql(u8, cmd, "init")) {
+        return runInit(init, &args, globals.dry_run);
+    }
+    if (std.mem.eql(u8, cmd, "up")) {
+        return runUp(init, &args, globals.dry_run);
+    }
     if (std.mem.eql(u8, cmd, "dev")) {
         return runDev(init, &args);
     }
@@ -61,6 +76,9 @@ pub fn main(init: std.process.Init) !void {
     }
     if (std.mem.eql(u8, cmd, "config")) {
         return config_cmd.run(init, &args);
+    }
+    if (std.mem.eql(u8, cmd, "uninstall")) {
+        return runUninstall(init, &args, globals.yes, globals.dry_run);
     }
 
     printUsage();
@@ -349,6 +367,376 @@ fn runLogs(init: std.process.Init, args: *std.process.Args.Iterator) !void {
     }
 }
 
+fn runInit(init: std.process.Init, args: *std.process.Args.Iterator, dry_run: bool) !void {
+    var options = docker_cmd.InitOptions{ .dry_run = dry_run };
+    var profile_selected = false;
+
+    while (args.next()) |arg| {
+        if (std.mem.eql(u8, arg, "--profile")) {
+            options.profile = parseProfile(args.next() orelse return error.MissingValue) orelse return error.UnknownProfile;
+            profile_selected = true;
+        } else if (std.mem.eql(u8, arg, "--dir")) {
+            options.directory = args.next() orelse return error.MissingValue;
+        } else if (std.mem.eql(u8, arg, "--domain")) {
+            options.domain = args.next() orelse return error.MissingValue;
+        } else if (std.mem.eql(u8, arg, "--email")) {
+            options.email = args.next() orelse return error.MissingValue;
+        } else if (std.mem.eql(u8, arg, "--database")) {
+            const value = args.next() orelse return error.MissingValue;
+            options.database = std.meta.stringToEnum(docker_cmd.Database, value) orelse return error.UnknownDatabaseMode;
+        } else if (std.mem.eql(u8, arg, "--instance-name")) {
+            options.instance_name = args.next() orelse return error.MissingValue;
+        } else if (std.mem.eql(u8, arg, "--image-prefix")) {
+            options.image_prefix = args.next() orelse return error.MissingValue;
+        } else if (std.mem.eql(u8, arg, "--version")) {
+            options.version = args.next() orelse return error.MissingValue;
+        } else if (std.mem.eql(u8, arg, "--assets")) {
+            options.assets_root = args.next() orelse return error.MissingValue;
+        } else if (std.mem.eql(u8, arg, "--dry-run")) {
+            options.dry_run = true;
+        } else if (std.mem.eql(u8, arg, "--yes") or std.mem.eql(u8, arg, "-y")) {
+            // init only writes local files; no confirmation is required.
+        } else if (std.mem.eql(u8, arg, "--help")) {
+            printUsage();
+            return;
+        } else {
+            std.debug.print("Error: unknown init option '{s}'.\n", .{arg});
+            return error.UnknownOption;
+        }
+    }
+
+    if (!profile_selected or options.profile != .docker) {
+        std.debug.print(
+            \\Native init is covered by `doctbase install`. Use:
+            \\  doctbase init --profile docker [--dir DIR] [--domain HOST] [--email ADDR]
+            \\
+        , .{});
+        std.process.exit(1);
+    }
+
+    var result = docker_cmd.init(init.io, init.gpa, options) catch |err| {
+        printDockerError(err);
+        std.process.exit(1);
+    };
+    defer result.deinit();
+
+    if (options.dry_run) {
+        std.debug.print("Docker plan (no changes were made):\n", .{});
+    } else {
+        std.debug.print("Docker deployment initialized.\n", .{});
+    }
+    std.debug.print(
+        \\Directory: {s}
+        \\Compose:   {s}
+        \\Caddyfile: {s}
+        \\Env:       {s} ({s})
+        \\
+    , .{
+        result.directory,
+        result.compose_path,
+        result.caddyfile_path,
+        result.env_path,
+        if (options.dry_run)
+            (if (result.env_created) "would be created" else "existing values would be kept")
+        else if (result.env_created)
+            "created"
+        else
+            "existing values kept",
+    });
+    if (result.secrets_generated != 0) {
+        if (options.dry_run) {
+            std.debug.print(
+                "{d} secret(s) would be generated in .env (mode 0600); values are never printed.\n",
+                .{result.secrets_generated},
+            );
+        } else {
+            std.debug.print(
+                "{d} secret(s) generated in .env (mode 0600); values are never printed.\n",
+                .{result.secrets_generated},
+            );
+        }
+    }
+    std.debug.print("Next: doctbase up --profile docker --dir {s}\n", .{result.directory});
+}
+
+fn runUp(init: std.process.Init, args: *std.process.Args.Iterator, dry_run: bool) !void {
+    var options = docker_cmd.UpOptions{ .dry_run = dry_run };
+
+    while (args.next()) |arg| {
+        if (std.mem.eql(u8, arg, "--profile")) {
+            options.profile = parseProfile(args.next() orelse return error.MissingValue) orelse return error.UnknownProfile;
+        } else if (std.mem.eql(u8, arg, "--dir")) {
+            options.directory = args.next() orelse return error.MissingValue;
+        } else if (std.mem.eql(u8, arg, "--dry-run")) {
+            options.dry_run = true;
+        } else if (std.mem.eql(u8, arg, "--help")) {
+            printUsage();
+            return;
+        } else {
+            std.debug.print("Error: unknown up option '{s}'.\n", .{arg});
+            return error.UnknownOption;
+        }
+    }
+
+    var host = CommandHost{ .allocator = init.gpa, .io = init.io };
+    docker_cmd.up(init.io, init.gpa, options, host.runner()) catch |err| {
+        printDockerError(err);
+        std.process.exit(1);
+    };
+}
+
+fn parseProfile(value: []const u8) ?docker_cmd.Profile {
+    return std.meta.stringToEnum(docker_cmd.Profile, value);
+}
+
+fn printDockerError(err: anyerror) void {
+    const message = switch (err) {
+        error.NativeProfileUnsupported => "profile native uses `doctbase install`",
+        error.InvalidDirectory => "--dir must be a concrete directory, not /, . or ..",
+        error.InvalidDomain => "invalid --domain; use a DNS hostname without scheme or path",
+        error.InvalidEmail => "invalid --email address",
+        error.InvalidInstanceName => "--instance-name must be lowercase letters, digits or '-'",
+        error.InvalidImagePrefix => "--image-prefix must be a valid image repository prefix",
+        error.InvalidVersion => "--version must be a tag or digest without whitespace",
+        error.TemplateNotFound => "compose template not found; pass --assets <release-share-dir>",
+        error.ComposeNotFound => "compose.yml not found; run `doctbase init --profile docker` first",
+        error.CommandFailed => "docker compose / systemctl command failed; inspect the output above",
+        else => @errorName(err),
+    };
+    std.debug.print("Error: {s}.\n", .{message});
+}
+
+const CommandHost = struct {
+    allocator: std.mem.Allocator,
+    io: std.Io,
+
+    fn runner(self: *CommandHost) docker_cmd.Runner {
+        return .{ .context = self, .run = runCommand };
+    }
+
+    fn hostOf(context: ?*anyopaque) *CommandHost {
+        return @ptrCast(@alignCast(context.?));
+    }
+
+    fn runCommand(context: ?*anyopaque, argv: []const []const u8) anyerror!bool {
+        const self = hostOf(context);
+        const result = std.process.run(self.allocator, self.io, .{
+            .argv = argv,
+            .stdout_limit = .limited(1024 * 1024),
+            .stderr_limit = .limited(1024 * 1024),
+        }) catch return false;
+        defer self.allocator.free(result.stdout);
+        defer self.allocator.free(result.stderr);
+
+        if (result.stdout.len != 0) std.debug.print("{s}", .{result.stdout});
+        if (result.stderr.len != 0) std.debug.print("{s}", .{result.stderr});
+
+        return switch (result.term) {
+            .exited => |code| code == 0,
+            else => false,
+        };
+    }
+};
+
+fn runRepair(
+    init: std.process.Init,
+    args: *std.process.Args.Iterator,
+    assume_yes: bool,
+    dry_run: bool,
+) !void {
+    var options = install_mod.Options{
+        .yes = assume_yes,
+        .dry_run = dry_run,
+        .repair = true,
+    };
+
+    while (args.next()) |arg| {
+        if (std.mem.eql(u8, arg, "--domain")) {
+            options.domain = args.next() orelse return error.MissingValue;
+        } else if (std.mem.eql(u8, arg, "--email")) {
+            options.email = args.next() orelse return error.MissingValue;
+        } else if (std.mem.eql(u8, arg, "--yes") or std.mem.eql(u8, arg, "-y")) {
+            options.yes = true;
+        } else if (std.mem.eql(u8, arg, "--dry-run")) {
+            options.dry_run = true;
+        } else if (std.mem.eql(u8, arg, "--assets")) {
+            options.assets_root = args.next() orelse return error.MissingValue;
+        } else if (std.mem.eql(u8, arg, "--bin-dir")) {
+            options.bin_dir = args.next() orelse return error.MissingValue;
+        } else if (std.mem.eql(u8, arg, "--help")) {
+            printUsage();
+            return;
+        } else {
+            std.debug.print("Error: unknown repair option '{s}'.\n", .{arg});
+            return error.UnknownOption;
+        }
+    }
+
+    if (!options.dry_run and !options.yes) {
+        std.debug.print(
+            \\This re-runs the installer against the existing instance to repair
+            \\binaries, units, generated files and service health. Existing
+            \\configuration, secrets and data are kept. Re-run with --yes to
+            \\continue, or --dry-run to only print the plan.
+            \\
+        , .{});
+        std.process.exit(1);
+    }
+
+    var host = install_host.Host.init(init.gpa, init.io, options.assets_root);
+    var repair = repair_cmd.Context.init(init.gpa, init.io, options) catch |err| switch (err) {
+        error.NotInstalled => {
+            std.debug.print("Doctbase is not installed on this host; run `doctbase install` first.\n", .{});
+            std.process.exit(1);
+        },
+        else => return err,
+    };
+    defer repair.deinit();
+
+    const outcome = try repair.run(host.executor());
+    install_summary.print(&repair.options, &outcome);
+    if (outcome.exitCode() != 0) std.process.exit(outcome.exitCode());
+}
+
+fn runUninstall(
+    init: std.process.Init,
+    args: *std.process.Args.Iterator,
+    assume_yes: bool,
+    dry_run: bool,
+) !void {
+    var mode: uninstall_cmd.Mode = .keep_data;
+    var yes = assume_yes;
+    var plan_only = dry_run;
+    var mode_selected = false;
+
+    while (args.next()) |arg| {
+        if (std.mem.eql(u8, arg, "--purge")) {
+            if (mode_selected and mode != .purge) return error.ConflictingUninstallMode;
+            mode = .purge;
+            mode_selected = true;
+        } else if (std.mem.eql(u8, arg, "--keep-data")) {
+            if (mode_selected and mode != .keep_data) return error.ConflictingUninstallMode;
+            mode = .keep_data;
+            mode_selected = true;
+        } else if (std.mem.eql(u8, arg, "--yes") or std.mem.eql(u8, arg, "-y")) {
+            yes = true;
+        } else if (std.mem.eql(u8, arg, "--dry-run")) {
+            plan_only = true;
+        } else if (std.mem.eql(u8, arg, "--help")) {
+            printUsage();
+            return;
+        } else {
+            std.log.err("unknown uninstall option: {s}", .{arg});
+            return error.UnknownOption;
+        }
+    }
+
+    var answer: ?[]u8 = null;
+    defer if (answer) |value| init.gpa.free(value);
+
+    if (!plan_only) {
+        if (uninstall_cmd.confirmationFor(mode, yes)) |required| {
+            answer = try promptAnswer(init.io, init.gpa, required);
+        }
+    }
+
+    var host = UninstallHost{ .allocator = init.gpa, .io = init.io };
+    uninstall_cmd.run(init.gpa, .{
+        .mode = mode,
+        .assume_yes = yes,
+        .dry_run = plan_only,
+        .confirmation = if (answer) |value| value else null,
+    }, host.executor()) catch |err| switch (err) {
+        error.ConfirmationRequired, error.ConfirmationMismatch => {
+            std.debug.print("Uninstall cancelled.\n", .{});
+            std.process.exit(2);
+        },
+        else => return err,
+    };
+}
+
+fn promptAnswer(io: std.Io, allocator: std.mem.Allocator, required: uninstall_cmd.Confirmation) ![]u8 {
+    switch (required) {
+        .simple => std.debug.print(
+            "Remove Doctbase services and generated files but keep configuration and data? [y/N] ",
+            .{},
+        ),
+        .typed_purge => std.debug.print(
+            "This permanently deletes all Doctbase data. Type '{s}' to continue: ",
+            .{uninstall_cmd.typed_purge_answer},
+        ),
+    }
+
+    var buffer: [256]u8 = undefined;
+    var reader = std.Io.File.stdin().reader(io, &buffer);
+    const line = reader.interface.takeDelimiterExclusive('\n') catch |err| switch (err) {
+        error.EndOfStream => "",
+        else => return err,
+    };
+    return allocator.dupe(u8, line);
+}
+
+const UninstallHost = struct {
+    allocator: std.mem.Allocator,
+    io: std.Io,
+
+    fn executor(self: *UninstallHost) uninstall_cmd.Executor {
+        return .{
+            .context = self,
+            .running_as_root = isRoot(),
+            .remove_path = removePath,
+            .run = runCommand,
+        };
+    }
+
+    fn hostOf(context: ?*anyopaque) *UninstallHost {
+        return @ptrCast(@alignCast(context.?));
+    }
+
+    /// Delete a file, symlink or directory without following symlinks. A path
+    /// that is already absent is success, which makes re-runs idempotent.
+    fn removePath(context: ?*anyopaque, path: []const u8) anyerror!void {
+        const self = hostOf(context);
+        const stat = std.Io.Dir.cwd().statFile(self.io, path, .{ .follow_symlinks = false }) catch |err| switch (err) {
+            error.FileNotFound => return,
+            else => return err,
+        };
+
+        if (stat.kind == .directory) {
+            try std.Io.Dir.cwd().deleteTree(self.io, path);
+        } else {
+            // Never traverse a symlink: deleting the link itself is the only
+            // safe action when the target may belong to another package.
+            std.Io.Dir.cwd().deleteFile(self.io, path) catch |err| switch (err) {
+                error.FileNotFound => return,
+                else => return err,
+            };
+        }
+    }
+
+    /// Commands are best effort: unavailable units, missing clusters and
+    /// already-removed accounts must not abort the remaining cleanup.
+    fn runCommand(context: ?*anyopaque, argv: []const []const u8) anyerror!bool {
+        const self = hostOf(context);
+        const result = std.process.run(self.allocator, self.io, .{
+            .argv = argv,
+            .stdout_limit = .limited(256 * 1024),
+            .stderr_limit = .limited(256 * 1024),
+        }) catch return false;
+        defer self.allocator.free(result.stdout);
+        defer self.allocator.free(result.stderr);
+
+        return switch (result.term) {
+            .exited => |code| code == 0,
+            else => false,
+        };
+    }
+};
+
+fn isRoot() bool {
+    return std.os.linux.geteuid() == 0;
+}
+
 fn printStatus(io: std.Io, driver: lifecycle.driver.LifecycleDriver) !void {
     const states = try driver.list(std.heap.page_allocator);
     defer std.heap.page_allocator.free(states);
@@ -386,16 +774,25 @@ fn printUsage() void {
         \\Commands:
         \\  install [--domain HOST] [--email ADDR] [--yes] [--dry-run]
         \\          [--assets DIR] [--bin-dir DIR]
+        \\  repair [--domain HOST] [--email ADDR] [--yes] [--dry-run]
+        \\         [--assets DIR] [--bin-dir DIR]
+        \\  init --profile docker [--dir DIR] [--domain HOST] [--email ADDR]
+        \\       [--database external|bundled] [--dry-run]
+        \\  up [--profile native|docker] [--dir DIR] [--dry-run]
         \\  dev [--run-dir DIR] [--bin-dir DIR] [--config FILE] [--token TOKEN]
         \\      [--service NAME]...
         \\  status [--systemctl PATH] [--compose] [--compose-file FILE]
         \\  restart <service> [--systemctl PATH] [--compose] [--compose-file FILE]
         \\  logs <service> [--tail N] [--journalctl PATH] [--compose]
         \\  config <validate|show|explain> [--config PATH]
+        \\  uninstall [--keep-data|--purge] [--yes] [--dry-run]
         \\
         \\Examples:
         \\  doctbase install --domain example.com --email admin@example.com --yes
         \\  doctbase install --dry-run
+        \\  doctbase repair --yes
+        \\  doctbase init --profile docker --dir /opt/doctbase --domain example.com
+        \\  doctbase up --profile docker --dir /opt/doctbase
         \\  doctbase dev
         \\  doctbase dev --service gateway --service auth --token dev-secret
         \\  doctbase status
@@ -405,6 +802,8 @@ fn printUsage() void {
         \\  doctbase config validate
         \\  doctbase config show
         \\  doctbase config explain database.mode
+        \\  doctbase uninstall
+        \\  doctbase uninstall --purge
         \\
     , .{});
 }

@@ -264,9 +264,23 @@ fn preflightCallback(context: ?*anyopaque, options: *const install.Options) anye
     const self = Host.hostOf(context);
     var snapshot = try preflight.collect(self.allocator, self.io, .{
         .domain = if (options.domain.len > 0) options.domain else null,
+        .doctbase_managed_ports = managedPorts(self, options),
     });
     defer snapshot.deinit();
     return preflight.evaluate(snapshot.facts);
+}
+
+/// Repair re-runs preflight on a host where the Doctbase Caddy unit may still
+/// own 80/443. Treat those ports as managed only when our unit is active;
+/// otherwise a foreign listener must keep blocking the repair.
+fn managedPorts(self: *Host, options: *const install.Options) []const u16 {
+    if (!options.repair) return &.{};
+    const output = self.captureOptional(&.{ "systemctl", "is-active", "doctbase-caddy.service" }) catch return &.{};
+    if (output) |value| {
+        defer self.allocator.free(value);
+        if (std.mem.eql(u8, std.mem.trim(u8, value, " \t\r\n"), "active")) return &.{ 80, 443 };
+    }
+    return &.{};
 }
 
 fn packagesCallback(context: ?*anyopaque, options: *const install.Options, journal: *install.Journal) anyerror!void {
@@ -277,6 +291,7 @@ fn packagesCallback(context: ?*anyopaque, options: *const install.Options, journ
 
     var snapshot = try preflight.collect(self.allocator, self.io, .{
         .domain = if (options.domain.len > 0) options.domain else null,
+        .doctbase_managed_ports = managedPorts(self, options),
     });
     defer snapshot.deinit();
 

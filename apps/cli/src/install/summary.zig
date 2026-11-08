@@ -51,7 +51,11 @@ pub fn print(options: *const install.Options, outcome: *const install.Outcome) v
         },
         .installed => {
             const summary = outcome.summary orelse unreachable;
-            std.debug.print("Doctbase {s} is installed.\n", .{summary.version});
+            if (options.repair) {
+                std.debug.print("Doctbase {s} repair completed; existing data was kept.\n", .{summary.version});
+            } else {
+                std.debug.print("Doctbase {s} is installed.\n", .{summary.version});
+            }
             if (summary.domain.len == 0) {
                 std.debug.print(
                     \\Mode: local (no domain configured)

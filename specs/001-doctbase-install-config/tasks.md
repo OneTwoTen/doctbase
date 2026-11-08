@@ -131,10 +131,10 @@ Monorepo theo [plan.md](./plan.md): `apps/`, `packages/`, `dashboard/`, `infrast
 - [x] T051 [US1] Implement post-install health verification and rollback in `apps/cli/src/install/health.zig`
 - [x] T052 [US1] Implement install summary, log file and support hints in `apps/cli/src/install/summary.zig`
 - [ ] T053 [US1] Implement one-line signed bootstrap installer and audited two-step variant in `deploy/native/install.sh`, `tools/manifest.zig`
-- [ ] T054 [US1] Implement uninstall `--keep-data`/`--purge` in `apps/cli/src/commands/uninstall.zig`
-- [ ] T055 [US1] Implement repair/reinstall without data loss in `apps/cli/src/install/repair.zig`
-- [ ] T056 [US1] Implement one-line Docker install and explicit `init --profile docker`/`up` path in `apps/cli/src/commands/docker.zig`, `deploy/docker/compose.yml.tmpl`
-- [ ] T057 [US1] Write native/Docker install docs in `docs/quickstart.md`, `docs/install.md`
+- [x] T054 [US1] Implement uninstall `--keep-data`/`--purge` in `apps/cli/src/commands/uninstall.zig` (unit tests in `tests/unit/uninstall_test.zig`; E2E trên VM vẫn thuộc T058)
+- [x] T055 [US1] Implement repair/reinstall without data loss in `apps/cli/src/install/repair.zig` (state-driven options, managed-port preflight; tests in `tests/unit/repair_test.zig`)
+- [x] T056 [US1] Implement one-line Docker install and explicit `init --profile docker`/`up` path in `apps/cli/src/commands/docker.zig`, `deploy/docker/compose.yml.tmpl`, `deploy/docker/install.sh` (rendering/argv tests in `tests/unit/docker_init_test.zig`; CI validates the rendered template; running published images remains release work)
+- [x] T057 [US1] Write native/Docker install docs in `docs/quickstart.md`, `docs/install.md` (native install, repair, uninstall, Docker init/up, Coolify split, limitations)
 - [ ] T058 [US1] Run E2E matrix (Ubuntu 24.04, Debian 13, arm64) in `tests/e2e/matrix-install.sh`
 
 **Checkpoint**: US1 hoạt động độc lập; dashboard/health đạt; không cần project.

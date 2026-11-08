@@ -5,9 +5,10 @@ Ubuntu 24.04/26.04 (x86_64/arm64). Đây là golden path native; Docker/Coolify 
 đường tùy chọn và có tài liệu riêng.
 
 > **Trạng thái slice hiện tại**: orchestration, state file, lock, rollback,
-> health verification và summary đã có. Bootstrap admin/setup token trong
-> Management API (task T050), `project create` (US2), script cài một dòng
-> (T053) và `uninstall` (T054) vẫn là các slice tiếp theo.
+> health verification, summary, `repair`, `uninstall` và đường Docker
+> `init --profile docker`/`up` đã có. Bootstrap admin/setup token trong
+> Management API (task T050), `project create` (US2) và bootstrap script release
+> có chữ ký (T053) vẫn là các slice tiếp theo.
 
 ## Điều kiện
 
@@ -103,6 +104,111 @@ State: /var/lib/doctbase/state.json
 - `state.json` lưu version component (PostgreSQL, PgBouncer, Caddy) để `doctor`
   đối chiếu sau này.
 
+## Repair / reinstall
+
+`repair` là cách khôi phục một instance đã cài mà không mất dữ liệu:
+
+```sh
+sudo doctbase repair --dry-run
+sudo doctbase repair --yes
+sudo doctbase repair --domain example.com --yes
+```
+
+- Yêu cầu `/var/lib/doctbase/state.json` đã có; host chưa cài phải dùng
+  `doctbase install`.
+- Chạy lại đúng chuỗi bước idempotent của installer: adopt user/secret/cluster
+  đã có, render lại unit/file generated khi lệch, copy binary, start service và
+  kiểm tra health.
+- `domain`/`email` mặc định lấy từ state; nếu truyền `--domain`/`--email` thì
+  giá trị mới được dùng để render và ghi lại vào state.
+- Preflight coi 80/443 là do Doctbase quản lý **chỉ khi** unit
+  `doctbase-caddy.service` đang active; nếu dịch vụ khác chiếm port, repair vẫn
+  bị chặn.
+- Không ghi đè `/etc/doctbase/doctbase.toml` đã có, không rotate secret, không
+  xóa project database, storage, auth key hay backup.
+- Nếu một bước lỗi, rollback chỉ xóa tài nguyên **do lần repair đó tạo**; dữ
+  liệu có trước đó được giữ nguyên.
+
+## Gỡ cài đặt
+
+Mặc định `uninstall` giữ cấu hình và dữ liệu để có thể cài lại:
+
+```sh
+sudo doctbase uninstall            # hỏi xác nhận y/N
+sudo doctbase uninstall --yes
+sudo doctbase uninstall --purge    # bắt buộc gõ đúng "purge"
+sudo doctbase uninstall --purge --dry-run
+```
+
+- `keep-data` (mặc định): dừng và xóa `doctbase.target`, unit service, polkit
+  rule, binary dưới `/usr/local/lib/doctbase` và artifact generated. Giữ
+  `/etc/doctbase` (config + secret) và `/var/lib/doctbase` (control/project
+  data, auth key, backup) để lần cài sau dùng lại.
+- `--purge`: làm thêm các bước trên, drop cluster PostgreSQL 18 `doctbase`,
+  xóa `/etc/doctbase`, `/var/lib/doctbase`, `/var/log/doctbase`, dữ liệu
+  cluster và user/group service. Xác nhận dạng gõ chữ không bị bỏ qua bởi
+  `--yes`.
+- `--dry-run` chỉ in kế hoạch, không cần root và không thay đổi gì.
+- PostgreSQL/PgBouncer/Caddy package hệ thống **không** bị gỡ: đó là tài
+  nguyên dùng chung, người vận hành quyết định gỡ bằng package manager.
+- Uninstall idempotent: unit/file đã không còn được coi là thành công.
+
+## Docker mode (tùy chọn)
+
+Docker không phải điều kiện của native mode. Có hai đường Docker:
+
+### Standalone (`init --profile docker` + `up`)
+
+Dùng khi bạn tự chạy Docker Compose trên VPS; Caddy trong stack công khai
+80/443 và tự lấy TLS.
+
+```sh
+doctbase init --profile docker --dir /opt/doctbase \
+  --domain example.com --email admin@example.com \
+  --database external \
+  --assets /usr/local/lib/doctbase/current/share
+
+doctbase up --profile docker --dir /opt/doctbase
+```
+
+`init` sinh trong `--dir`:
+
+| File | Nội dung |
+|------|----------|
+| `compose.yml` | gateway, management, Caddy; profile `optional` (auth) và `bundled` (PostgreSQL 18 + PgBouncer) |
+| `Caddyfile` | reverse proxy về management; `:80` khi không có domain |
+| `.env` | version/image prefix, domain, database mode, secret 256-bit mode `0600` |
+
+- Chạy lại `init` là idempotent: secret đã sinh không bao giờ bị ghi đè; các
+  key cấu hình (`DOCTBASE_VERSION`, domain, database mode, ...) được cập nhật
+  theo cờ mới và key thiếu được bổ sung. `compose.yml`/`Caddyfile` là generated
+  artifact và được render lại.
+- `--dry-run` in kế hoạch, không tạo file, không generate secret.
+- `--database bundled` đặt `DOCTBASE_DATABASE_MODE=managed` và
+  `COMPOSE_PROFILES=bundled`. Mặc định là `external`.
+- Core service không publish port; chỉ Caddy publish 80/443.
+- `up` kiểm tra `compose.yml` tồn tại rồi chạy
+  `docker compose -f ... --env-file ... up -d --wait --wait-timeout 180`.
+  Docker Compose vẫn là lifecycle owner; không có supervisor mới.
+- Nâng cấp: sửa `DOCTBASE_VERSION` trong `.env` (hoặc chạy `init --version`),
+  sau đó `doctbase up`. Rollback: pin version cũ và `up` lại; volume
+  `doctbase-data`/`postgres-data` được giữ.
+- Ảnh phải được publish ở registry. Release bundle sẽ cung cấp binary và
+  template; trong repo dùng `--assets .` hoặc `deploy/docker/install.sh`.
+
+Một lệnh trong repo/bundle hiện tại:
+
+```sh
+sh deploy/docker/install.sh --domain example.com --email admin@example.com \
+  --dir /opt/doctbase --database bundled --yes
+```
+
+### Coolify / platform-managed proxy
+
+Dùng [compose resource](coolify.md) tại `deploy/docker/compose.yml`: không
+publish port, domain/TLS do Coolify/Traefik quản lý, Caddy không bật. Hai đường
+này không trộn file compose với nhau.
+
 ## Bảo mật
 
 - PostgreSQL và PgBouncer không mở TCP; chỉ Unix socket. Caddy là thành phần
@@ -114,10 +220,13 @@ State: /var/lib/doctbase/state.json
 
 ## Giới hạn hiện tại
 
-- Chưa có script cài một dòng (`deploy/native/install.sh` vẫn là placeholder).
+- `deploy/native/install.sh` vẫn là placeholder; one-line native cần release
+  bootstrap có chữ ký (T053).
 - Chưa có setup flow/admin bootstrap trong Management API; setup token đã được
   sinh nhưng chưa có endpoint xác thực.
-- Chưa có `project create`, `uninstall`, `repair` và external database/proxy.
+- Chưa có `project create` và external database/proxy mode.
+- Docker standalone cần ảnh `doctbase/*` đã publish; chưa có E2E pull từ
+  registry trong repo này.
 - Chưa hỗ trợ nhiều replica hoặc HA.
 
 Xem thêm [Troubleshooting](troubleshooting.md), [Configuration reference](config-reference.md)

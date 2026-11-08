@@ -84,6 +84,10 @@ pub const Options = struct {
     install_libvips: bool = false,
     dry_run: bool = false,
     yes: bool = false,
+    /// Repair/reinstall an existing instance. The step sequence is unchanged
+    /// and stays idempotent; the flag relaxes the preflight port check for
+    /// ports owned by this installation and switches the summary wording.
+    repair: bool = false,
     state_path: []const u8 = state_mod.state_path,
     log_path: []const u8 = state_mod.log_path,
     lock_path: []const u8 = state_mod.lock_path,
@@ -247,6 +251,13 @@ pub fn run(
         options.email,
     );
     defer tracker.deinit();
+
+    // Repair may be invoked with an explicit domain/email override. Persist the
+    // values used for rendering so the next repair/status sees the same host.
+    if (options.repair) {
+        tracker.state.domain = options.domain;
+        tracker.state.email = options.email;
+    }
 
     const started = state_mod.nowSeconds(io);
     try tracker.begin(started);
