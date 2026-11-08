@@ -25,6 +25,7 @@ services:
       dockerfile: deploy/docker/Dockerfile
       args:
         SERVICE: gateway
+        ZIG_VERSION: ${ZIG_VERSION:-0.17.1}
     image: doctbase/gateway:${DOCTBASE_VERSION:-dev}
     init: true
     restart: unless-stopped
@@ -60,6 +61,7 @@ services:
       dockerfile: deploy/docker/Dockerfile
       args:
         SERVICE: management
+        ZIG_VERSION: ${ZIG_VERSION:-0.17.1}
     image: doctbase/management:${DOCTBASE_VERSION:-dev}
     init: true
     restart: unless-stopped
@@ -97,6 +99,7 @@ services:
       dockerfile: deploy/docker/Dockerfile
       args:
         SERVICE: auth
+        ZIG_VERSION: ${ZIG_VERSION:-0.17.1}
     image: doctbase/auth:${DOCTBASE_VERSION:-dev}
     init: true
     restart: unless-stopped
