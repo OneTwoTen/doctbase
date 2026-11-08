@@ -33,6 +33,8 @@ RUN set -eux; \
 WORKDIR /src
 COPY . .
 RUN --mount=type=cache,target=/root/.cache/zig \
+    mkdir -p /root/.cache/zig/p && \
+    if [ -d "/src/zig-pkg" ]; then cp -rn /src/zig-pkg/* /root/.cache/zig/p/ 2>/dev/null || true; fi && \
     zig build -Doptimize=ReleaseSafe
 
 FROM debian:13-slim AS runtime
