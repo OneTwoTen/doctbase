@@ -12,6 +12,7 @@ Thay đổi kỹ thuật cốt lõi:
 
 - `packages/runtime`: thêm TCP listener (hiện chỉ có UDS) để container nói chuyện qua private network, giữ nguyên UDS cho native.
 - `deploy/docker/`: Dockerfile multi-stage (Zig 0.17.1), compose file cho Coolify, entrypoint render `doctbase.toml` từ biến môi trường.
+- Dashboard Svelte được build thành static bundle và chỉ được thêm vào image management; management phục vụ dashboard trên cùng port/domain 8081, không tạo service hay config mới.
 - Biến môi trường theo chuẩn Coolify (`SERVICE_FQDN_*`, `SERVICE_PASSWORD_*`) để domain/secret được sinh và giữ qua redeploy.
 - CI: validate compose, build image, smoke test TCP + compose profile; test mới cho TCP listener.
 - Tài liệu `docs/coolify.md` (tạo resource, domain, database, rollback, giới hạn V1).
@@ -20,7 +21,7 @@ Thay đổi kỹ thuật cốt lõi:
 
 **Language/Version**: Zig `0.17.1` (theo `.zigversion`), Docker Compose v2, POSIX shell cho entrypoint.
 
-**Primary Dependencies**: `httpz` (đã pin), PostgreSQL 18, PgBouncer, `curl` cho healthcheck, Docker BuildKit.
+**Primary Dependencies**: `httpz` (đã pin), Node.js 22/npm lockfile cho dashboard, PostgreSQL 18, PgBouncer, `curl` cho healthcheck, Docker BuildKit.
 
 **Storage**: PostgreSQL 18 (profile `bundled`) hoặc database ngoài (profile `external`); volume `doctbase-data` cho state/storage; volume `postgres-data` chỉ khi bundled.
 
@@ -43,6 +44,8 @@ Thay đổi kỹ thuật cốt lõi:
 - Không thêm supervisor tự viết; Compose là lifecycle owner.
 - Secret do Coolify sinh và persist; không có mật khẩu mặc định.
 - Native install không bị thay đổi hành vi hay contract.
+- Dashboard chỉ hoạt động trong Docker management image; API/auth/services/setup/health/metrics/internal không được SPA fallback; đường dẫn asset phải được giới hạn trong bundle.
+- Không thêm biến cấu hình, service, public port hay secret cho dashboard.
 
 **Scale/Scope**: 2 service public (gateway, management) + 2 service hạ tầng tùy chọn (postgres, pgbouncer); 5 service tùy chọn bật sau (auth, rest, realtime, storage, image-proxy, pg-meta).
 
@@ -56,13 +59,13 @@ Thay đổi kỹ thuật cốt lõi:
 | II. Service Independence, Shared Contracts | Mỗi service vẫn là executable + container + health riêng; không gộp process | **PASS** |
 | III. Single-VPS First, Native-First | Native vẫn golden path; Coolify là optional; không Kubernetes/Redis/NATS | **PASS** (sau amendment cho external proxy) |
 | IV. Installability & Configurability | Một resource, biến môi trường có default, không sửa file generated, idempotent | **PASS** — env là config surface trong mode Coolify (ghi ở Complexity Tracking) |
-| V. Security by Default | Secret sinh tự động, không publish DB, private network, management có auth, non-root image | **PASS** |
+| V. Security by Default | Secret sinh tự động, không publish DB, private network, management có auth, non-root image; fallback không che API và asset path được giới hạn | **PASS** |
 | VI. Observability, Backup, Recoverability | Health theo container, log có cấu trúc, rollback ≤ 5 phút, volume bền vững | **PASS** |
-| VII. Test-First & Contract Discipline | Test TCP listener, compose config, smoke test CI trước khi coi là xong | **PASS** |
+| VII. Test-First & Contract Discipline | Test TCP listener, dashboard route boundaries, compose config và smoke test CI trước khi coi là xong | **PASS** |
 | Technical Constraints — Docker "only Caddy publishes 80/443" | Cần amendment: external managed proxy được phép sở hữu 80/443 trong mode Coolify | **AMENDMENT** (xem `.specify/memory/amendments/2026-11-06-external-proxy-coolify.md`) |
 | Process lifecycle constraint | Compose là lifecycle owner; không supervisor tự viết | **PASS** |
 
-**Post-Design re-check**: Sau khi thêm TCP listener và compose resource, không có service mới bắt buộc, không thêm public port ngoài proxy, không thêm secret thiếu generation. Hai điểm cần phê duyệt: (1) amendment external proxy/TLS, (2) config surface bằng env trong container mode.
+**Post-Design re-check**: Dashboard dùng management port/image hiện có, không thêm service, public port, biến cấu hình hay secret; route API/setup/health/metrics/internal không nhận HTML fallback; asset paths được giới hạn trong bundle. Native/systemd không được bật dashboard. Hai quyết định kiến trúc đã duyệt trước đó vẫn là: (1) amendment external proxy/TLS, (2) config surface bằng env trong container mode.
 
 ## Project Structure
 
@@ -87,9 +90,11 @@ packages/runtime/src/runtime.zig        # thêm TCP listener + Option.listen
 packages/runtime/src/bootstrap.zig      # (nếu cần) map env → options
 tests/integration/runtime_tcp_test.zig  # test health/ready/info qua TCP
 tests/security/runtime_tcp_security_test.zig  # token/allowlist qua TCP
+apps/management/src/dashboard.zig      # serve static bundle, MIME và SPA fallback có giới hạn
+dashboard/package-lock.json            # khóa dependency để build dashboard lặp lại được
 
 deploy/docker/
-├── Dockerfile             # multi-stage: build Zig → runtime Debian slim
+├── Dockerfile             # multi-stage: Zig + dashboard; target management chứa static bundle
 ├── compose.yml            # resource cho Coolify (gateway, management, profiles)
 ├── entrypoint.sh          # render /etc/doctbase/doctbase.toml từ env
 ├── .env.example           # biến cho chạy local/không Coolify
@@ -126,11 +131,13 @@ docs/development.md        # thêm mục chạy compose local
 3. **Compose resource (P1)**: gateway + management, `expose` nội bộ, healthcheck, volumes, env mẫu, profile `bundled`/`external`.
 4. **Domain & secret qua Coolify (P1)**: `SERVICE_FQDN_GATEWAY_8080`, `SERVICE_FQDN_MANAGEMENT_8081`, secret sinh bằng `SERVICE_PASSWORD_64_*`; tài liệu cách đổi domain.
 5. **CI & verification (P1)**: job compose config + build image + `up` hai service + curl health; chạy profile bundled (postgres) một lần.
-6. **Docs (P2)**: `docs/coolify.md`, cập nhật README + docs index, ghi giới hạn (1 replica, không di trú native ↔ Coolify).
+6. **Dashboard (P1)**: build static từ lockfile; chỉ management image nhận bundle; management phục vụ root, asset đúng MIME và deep-link fallback có giới hạn; API/auth/services/setup/health/metrics/internal tiếp tục trả response hiện hữu.
+7. **Docs (P2)**: `docs/coolify.md` và troubleshooting mô tả domain management, kiểm tra root/asset/deep-link/API 404, giới hạn (1 replica, không di trú native ↔ Coolify) và rollback image.
 
 ### Phase 3 — Rollout / rollback
 
 - Rollback: Coolify rollback về deployment trước; volume `doctbase-data`/`postgres-data` không bị xoá; migration chạy dưới lock và idempotent.
+- Nếu image mới lỗi dashboard, rollback về image/commit trước trong Coolify; không xoá volume hoặc đổi config. Native/systemd không bị ảnh hưởng.
 - Nếu amendment không được duyệt: dừng ở Phase 1, không merge compose có Traefik; giữ artifact ở nhánh feature.
 
 ## Risks
@@ -142,6 +149,9 @@ docs/development.md        # thêm mục chạy compose local
 | TCP listener làm lộ cổng nội bộ | Chỉ `expose`; không `ports`; test CI khẳng định không publish |
 | Migration chạy 2 lần khi redeploy | Lock + idempotent (đã có ở feature 001) |
 | Image quá lớn | Build stage cache + chỉ copy binary cần cho từng service (build arg `SERVICE`) |
+| SPA fallback che lỗi API hoặc health | Loại trừ namespace API/auth/services/setup/runtime trước fallback; kiểm tra unknown API vẫn là Problem Details JSON trong test và CI |
+| Path traversal đọc file host/container | Chỉ nhận path tương đối hợp lệ trong bundle; từ chối encoding/dấu phân cách nguy hiểm và test traversal |
+| Dashboard bị đóng gói vào mọi service | Dùng Docker target management riêng; CI xác nhận tài nguyên UI chỉ tồn tại trong image management |
 | Amendment bị từ chối | Giữ mode Coolify ngoài phạm vi merge; native path không bị ảnh hưởng |
 
 ## Complexity Tracking

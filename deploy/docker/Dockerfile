@@ -4,9 +4,17 @@
 #
 # Build one service per image so each container carries only its own binary:
 #   docker build -f deploy/docker/Dockerfile --build-arg SERVICE=gateway -t doctbase/gateway .
+#   docker build -f deploy/docker/Dockerfile --build-arg SERVICE=management --target management -t doctbase/management .
 #
 # deploy/docker/compose.yml does this per service.
 ARG ZIG_VERSION=0.17.1
+
+FROM node:22-bookworm-slim AS dashboard-build
+WORKDIR /src/dashboard
+COPY dashboard/package.json dashboard/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY dashboard/ ./
+RUN npm run check && npm run build
 
 FROM debian:13-slim AS build
 ARG ZIG_VERSION
@@ -59,3 +67,8 @@ WORKDIR /var/lib/doctbase
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["/usr/local/bin/doctbase-service"]
+
+FROM runtime AS management
+COPY --from=dashboard-build /src/dashboard/build/ /opt/doctbase/dashboard/
+
+FROM runtime AS release

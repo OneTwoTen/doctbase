@@ -24,6 +24,10 @@ Một quản trị viên đã có server chạy Coolify. Họ tạo resource m�
 2. **Given** resource đã deploy, **When** quản trị viên mở domain API và domain dashboard, **Then** cả hai phản hồi qua HTTPS do proxy của Coolify cung cấp, không có lớp edge thứ hai trong resource.
 3. **Given** resource đang chạy, **When** quản trị viên xem chi tiết resource, **Then** mỗi service là một container riêng với health check, log và trạng thái riêng; không có tiến trình supervisor tự viết bên trong container.
 4. **Given** resource đã deploy không có domain, **When** quản trị viên chỉ dùng địa chỉ do Coolify cấp, **Then** hệ thống vẫn healthy và không báo lỗi cấu hình.
+5. **Given** resource đã deploy, **When** quản trị viên mở domain management tại đường dẫn gốc, **Then** dashboard hiển thị và các tài nguyên giao diện tải đúng kiểu nội dung.
+6. **Given** dashboard có một đường dẫn điều hướng trực tiếp, **When** trình duyệt tải lại đường dẫn đó, **Then** dashboard tiếp tục hiển thị thay vì trả trang lỗi API.
+7. **Given** client gọi API hoặc endpoint vận hành không tồn tại, **When** yêu cầu được xử lý, **Then** management trả lỗi JSON và không thay bằng HTML dashboard.
+8. **Given** client yêu cầu đường dẫn asset vượt khỏi thư mục dashboard, **When** management xử lý yêu cầu, **Then** không có nội dung bên ngoài dashboard được trả về.
 
 ---
 
@@ -88,6 +92,8 @@ Sau khi instance cơ bản chạy, quản trị viên bật thêm các service t
 - **Người dùng nâng cấp từ mode native sang Coolify:** không có di trú dữ liệu tự động trong phạm vi này; tài liệu phải nói rõ.
 - **Realtime/WebSocket qua proxy:** kết nối phải hoạt động khi service realtime được bật.
 - **Nhiều replica:** V1 chỉ hỗ trợ một replica mỗi service; cấu hình nhiều replica phải bị từ chối hoặc ghi rõ không hỗ trợ.
+- **Đường dẫn quản trị/API:** SPA fallback chỉ áp dụng cho điều hướng trình duyệt; `/api`, `/auth`, `/services`, `/setup`, `/healthz`, `/readyz`, `/metrics`, `/internal` và các đường dẫn con của chúng không được trả HTML dashboard.
+- **Asset không tồn tại hoặc đường dẫn mã hóa không hợp lệ:** trả lỗi không chứa nội dung từ ngoài bundle; không fallback asset thiếu sang `index.html`.
 
 ## Requirements *(mandatory)*
 
@@ -112,6 +118,10 @@ Sau khi instance cơ bản chạy, quản trị viên bật thêm các service t
 - **FR-017**: Tài liệu MUST mô tả các bước tạo resource trên Coolify, danh sách biến môi trường, cách chọn database, cách rollback và giới hạn V1 (một replica, không di trú từ native).
 - **FR-018**: Thay đổi này MUST NOT làm hỏng đường cài native/systemd hiện có; native vẫn là golden path.
 - **FR-019**: Việc bổ sung chế độ này MUST được ghi nhận là amendment constitution cho quy tắc "chỉ Caddy publish 80/443", kèm lý do và đường rollback.
+- **FR-020**: Trong resource Coolify, người vận hành MUST truy cập được dashboard qua domain management đã gán, bao gồm đường dẫn gốc, tài nguyên tĩnh và các đường dẫn điều hướng trực tiếp của giao diện.
+- **FR-021**: Management MUST chỉ dùng dashboard HTML làm fallback cho yêu cầu GET/HEAD điều hướng trình duyệt không thuộc namespace `/api`, `/auth`, `/services`, `/setup` hoặc endpoint vận hành; endpoint API không khớp MUST tiếp tục trả Problem Details JSON.
+- **FR-022**: Yêu cầu dashboard MUST NOT đọc hoặc trả file bên ngoài bundle dashboard, kể cả khi đường dẫn chứa traversal hoặc encoding bất thường.
+- **FR-023**: Bundle dashboard MUST chỉ được phân phối cùng management trong chế độ Docker; thay đổi MUST NOT làm đổi hành vi native/systemd hoặc thêm service, public port, biến cấu hình bắt buộc hay secret.
 
 ### Key Entities
 
@@ -130,6 +140,8 @@ Sau khi instance cơ bản chạy, quản trị viên bật thêm các service t
 - **SC-004**: **0** cổng nội bộ (database, pooler, service nội bộ) truy cập được từ ngoài resource.
 - **SC-005**: Cấu hình cơ bản chạy ổn định trên máy **4 GB RAM** và không vượt quá tài nguyên đó trong 24 giờ chạy thử.
 - **SC-006**: Người vận hành xác định được service lỗi trong **2 phút** nhờ trạng thái và log theo từng container.
+- **SC-007**: Sau khi deploy resource Coolify, người vận hành mở được dashboard và tải lại một đường dẫn con trực tiếp mà không cần cấu hình thêm.
+- **SC-008**: Tất cả acceptance scenario về dashboard, API error và cách ly file vượt đường dẫn đều pass trước khi phát hành image.
 
 ## Assumptions
 

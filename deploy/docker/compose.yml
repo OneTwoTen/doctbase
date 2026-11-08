@@ -59,6 +59,7 @@ services:
     build:
       context: .
       dockerfile: deploy/docker/Dockerfile
+      target: management
       args:
         SERVICE: management
         ZIG_VERSION: ${ZIG_VERSION:-0.17.1}

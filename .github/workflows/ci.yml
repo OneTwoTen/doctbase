@@ -147,6 +147,39 @@ jobs:
             exit 1
           fi
 
+      - name: Smoke test dashboard and management route boundaries
+        run: |
+          set -euo pipefail
+          compose="docker compose --project-directory . -f deploy/docker/compose.yml"
+          management="http://127.0.0.1:8081"
+
+          $compose exec -T management sh -c 'test -s /opt/doctbase/dashboard/index.html'
+          if $compose exec -T gateway sh -c 'test -e /opt/doctbase/dashboard/index.html'; then
+            echo "dashboard assets leaked into the gateway image" >&2
+            exit 1
+          fi
+
+          root_html="$($compose exec -T management curl -fsS "$management/")"
+          $compose exec -T management curl -fsSI "$management/" | grep -qi '^content-type: text/html'
+          asset_path="$(printf '%s' "$root_html" | grep -oE 'href="/_app/[^\"]+\.css"' | head -n 1 | cut -d '"' -f 2)"
+          test -n "$asset_path"
+          $compose exec -T management curl -fsSI "$management$asset_path" | grep -qi '^content-type: text/css'
+          script_path="$(printf '%s' "$root_html" | grep -oE 'href="/_app/[^\"]+\.js"' | head -n 1 | cut -d '"' -f 2)"
+          test -n "$script_path"
+          $compose exec -T management curl -fsSI "$management$script_path" | grep -qi '^content-type: text/javascript'
+
+          deep_link="$($compose exec -T management curl -fsS -H 'Accept: text/html' "$management/ui/projects/123")"
+          test "$root_html" = "$deep_link"
+
+          api_response="$($compose exec -T management curl -sS -w '\n%{http_code} %{content_type}' "$management/api/v1/no-such-endpoint")"
+          printf '%s\n' "$api_response" | grep -q 'API endpoint not found'
+          test "$(printf '%s\n' "$api_response" | tail -n 1)" = '404 application/problem+json'
+
+          missing_asset_status="$($compose exec -T management curl -sS -o /dev/null -w '%{http_code}' "$management/_app/missing.js")"
+          test "$missing_asset_status" = 404
+          traversal_status="$($compose exec -T management curl --path-as-is -sS -o /dev/null -w '%{http_code}' "$management/%2e%2e/etc/passwd")"
+          test "$traversal_status" != 200
+
       - name: Assert no published ports
         run: |
           set -euo pipefail

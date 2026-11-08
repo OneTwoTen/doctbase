@@ -2,8 +2,8 @@
 //! the HTTP API through the shared runtime's fallback handler.
 //!
 //! Core endpoints (`/healthz`, `/readyz`, `/metrics`, `/internal/v1/info`) stay
-//! in `packages/runtime`; everything below `/api/v1` and `/setup` is handled by
-//! the management router.
+//! in `packages/runtime`; Docker mode serves the bundled dashboard before the
+//! management router, excluding API and operational namespaces.
 
 const std = @import("std");
 const httpz = @import("httpz");
@@ -16,6 +16,7 @@ const session_mod = @import("auth/session.zig");
 const users_mod = @import("auth/users.zig");
 const setup_mod = @import("auth/setup.zig");
 const runtime_agg = @import("services/runtime.zig");
+const dashboard_mod = @import("dashboard.zig");
 
 pub const Options = struct {
     /// JSON persistence path for admin accounts. The control DB repository will
@@ -25,6 +26,7 @@ pub const Options = struct {
     environ: ?*const std.process.Environ.Map = null,
     internal_token: ?[]const u8 = null,
     setup_state: ?setup_mod.State = null,
+    dashboard_dir: ?[]const u8 = null,
     driver: driver_mod.LifecycleDriver,
     cookie_secure: bool = true,
 };
@@ -39,6 +41,7 @@ pub const ManagementApp = struct {
     setup: *setup_mod.State,
     aggregator: *runtime_agg.ServiceRuntimeAggregator,
     api: router_mod.ManagementApi,
+    dashboard_dir: ?[]const u8 = null,
     internal_token: ?[]u8 = null,
     mutex: std.Io.Mutex = .init,
 
@@ -76,6 +79,7 @@ pub const ManagementApp = struct {
             .setup = setup,
             .aggregator = aggregator,
             .api = router_mod.ManagementApi.initWithSetup(allocator, io, session_store, users, aggregator, setup),
+            .dashboard_dir = options.dashboard_dir,
             .internal_token = internal_token,
         };
     }
@@ -115,6 +119,12 @@ pub const ManagementApp = struct {
             .request_id = req.header("x-request-id"),
         };
 
+        if (self.dashboard_dir) |dashboard_dir| {
+            if (try dashboard_mod.serve(self.allocator, self.io, dashboard_dir, method, req.url.path, req.header("accept"))) |response| {
+                return self.writeResponse(res, response);
+            }
+        }
+
         // The router and its stores are not internally synchronized; serialize
         // management-plane requests. Traffic is low and mutations are rare.
         self.mutex.lockUncancelable(self.io);
@@ -123,8 +133,11 @@ pub const ManagementApp = struct {
             return err;
         };
         self.mutex.unlock(self.io);
-        defer response.deinit(self.allocator);
+        return self.writeResponse(res, response);
+    }
 
+    fn writeResponse(self: *ManagementApp, res: *httpz.Response, response: router_mod.HttpResponse) !void {
+        defer response.deinit(self.allocator);
         res.status = response.status;
         if (std.mem.eql(u8, response.content_type, "application/json")) {
             res.content_type = .JSON;

@@ -9,4 +9,6 @@ deploy/docker/.env
 deploy/dev
 docs
 specs
-dashboard/node_modules
+**/node_modules
+dashboard/.svelte-kit
+dashboard/build

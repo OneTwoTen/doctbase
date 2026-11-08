@@ -716,6 +716,16 @@ test "management api gets single service or 404" {
     defer notfound_res.deinit(allocator);
     try std.testing.expectEqual(@as(u16, 404), notfound_res.status);
     try std.testing.expect(std.mem.indexOf(u8, notfound_res.body, "SERVICE_NOT_FOUND") != null);
+
+    const unknown_route_res = try api.handle(.{
+        .method = "GET",
+        .path = "/api/v1/no-such-endpoint",
+        .request_id = "req-4",
+    });
+    defer unknown_route_res.deinit(allocator);
+    try std.testing.expectEqual(@as(u16, 404), unknown_route_res.status);
+    try std.testing.expectEqualStrings("application/problem+json", unknown_route_res.content_type);
+    try std.testing.expect(std.mem.indexOf(u8, unknown_route_res.body, "API endpoint not found") != null);
 }
 
 test "management api restart validates role, csrf, infra protection and concurrency" {
