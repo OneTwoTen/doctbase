@@ -22,9 +22,11 @@ RUN set -eux; \
       arm64) zig_arch=aarch64 ;; \
       *) echo "unsupported build architecture: ${arch}" >&2; exit 1 ;; \
     esac; \
-    curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/zig-${zig_arch}-linux-${ZIG_VERSION}.tar.xz" -o /tmp/zig.tar.xz; \
+    zig_version="${ZIG_VERSION:-0.17.1}"; \
+    zig_version="${zig_version#v}"; \
+    curl -fsSL "https://ziglang.org/download/${zig_version}/zig-${zig_arch}-linux-${zig_version}.tar.xz" -o /tmp/zig.tar.xz; \
     tar -xJf /tmp/zig.tar.xz -C /opt; \
-    ln -sf "/opt/zig-${zig_arch}-linux-${ZIG_VERSION}/zig" /usr/local/bin/zig; \
+    ln -sf "/opt/zig-${zig_arch}-linux-${zig_version}/zig" /usr/local/bin/zig; \
     rm /tmp/zig.tar.xz; \
     zig version
 
